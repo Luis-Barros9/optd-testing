@@ -7,7 +7,7 @@ members = [
     "optd/catalog",
     "synopses",
     "tests/sqllogictest",
-    "tests/sqlplannertest",
+    "tests/sqlplannertest", "outputer",
 ]
 
 default-members = [

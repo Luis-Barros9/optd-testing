@@ -136,6 +136,62 @@ pub struct MemoTable {
     ctx: IRContext,
 }
 
+impl std::fmt::Debug for MemoTable 
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "MemoTable {{")?;
+        writeln!(f, "  Groups: {}\n", self.groups.len())?;
+        
+        for (group_id, group) in &self.groups {
+            writeln!(f, "  ═══════════════════════════════════")?;
+            writeln!(f, "  Group {}", group_id)?;
+            writeln!(f, "  ═══════════════════════════════════")?;
+            
+            // Format exploration
+            let exploration = group.exploration.borrow();
+            writeln!(f, "    Exploration:")?;
+            writeln!(f, "      Status: {:?}", exploration.status)?;
+            writeln!(f, "      Expressions: [")?;
+            for expr in &exploration.exprs {
+                write!(f, "        - {} {:?}", expr.id(), expr.key())?;
+                let input_ops = expr.key().input_operators();
+                if !input_ops.is_empty() {
+                    write!(f, " inputs: {:?}", input_ops)?;
+                }             
+                
+                writeln!(f, "")?;
+
+            }
+            writeln!(f, "      ]")?;
+            writeln!(f, "      Properties: {:?}", exploration.properties)?;
+            
+            // Format optimizations
+            if !group.optimizations.is_empty() {
+                writeln!(f, "\n    Optimizations:")?;
+                for (required, optimization) in &group.optimizations {
+                    let opt = optimization.borrow();
+                    writeln!(f, "      Required: {}", required)?;
+                    writeln!(f, "        Status: {:?}", opt.status)?;
+                    writeln!(f, "        Costed Exprs: [")?;
+                    for costed in &opt.costed_exprs {
+                        writeln!(f, "          - {} op_cost={:?} total_cost={:?}",
+                                 costed.group_expr.id(),
+                                 costed.operator_cost,
+                                 costed.total_cost)?;
+                    }
+                    writeln!(f, "        ]")?;
+                    if !opt.enforcers.is_empty() {
+                        writeln!(f, "        Enforcers: {:?}", opt.enforcers)?;
+                    }
+                }
+            }
+            writeln!(f)?;
+        }
+        
+        writeln!(f, "}}")
+    }
+}
+
 impl MemoTable {
     pub fn new(ctx: IRContext) -> Self {
         Self {
@@ -589,6 +645,22 @@ pub struct Exploration {
     pub status: Status,
 }
 
+impl std::fmt::Debug for Exploration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let exprs = self
+            .exprs
+            .iter()
+            .map(|e| e.key().clone())
+            .collect::<Vec<_>>();
+
+        f.debug_struct("Exploration")
+            .field("exprs", &exprs)
+            .field("properties", &self.properties)
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
 impl Exploration {
     pub fn new(
         first_expr: WithId<Arc<MemoGroupExpr>>,
@@ -609,6 +681,19 @@ pub struct CostedExpr {
     /// The input requirements and the index of the costed expressions for the inputs.
     pub input_requirements: Arc<[(Arc<Required>, usize)]>,
 }
+
+impl std::fmt::Debug for CostedExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CostedExpr")
+            .field("group_expr", &self.group_expr)
+            .field("operator_cost", &self.operator_cost)
+            .field("total_cost", &self.total_cost)
+            .field("input_requirements", &self.input_requirements)
+            .finish()
+    }
+}
+        
+    
 
 impl CostedExpr {
     pub fn new(
@@ -633,10 +718,61 @@ pub struct Optimization {
     pub status: Status,
 }
 
+
+impl std::fmt::Debug for Optimization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Optimization")
+            .field("costed_exprs", &self.costed_exprs)
+            .field("enforcers", &self.enforcers)
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
 pub struct MemoGroup {
     pub group_id: GroupId,
     pub exploration: watch::Sender<Exploration>,
     pub optimizations: HashMap<Arc<Required>, watch::Sender<Optimization>>,
+}
+
+
+impl std::fmt::Debug for MemoGroup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "MemoGroup {{")?;
+        writeln!(f, "  Group ID: {}", self.group_id)?;
+        
+        writeln!(f, "  \n  Exploration:")?;
+        let exploration = self.exploration.borrow();
+        writeln!(f, "    Status: {:?}", exploration.status)?;
+        writeln!(f, "    Expressions: [")?;
+        for expr in &exploration.exprs {
+            writeln!(f, "      - {} {:?}", expr.id(), expr.key())?;
+        }
+        writeln!(f, "    ]")?;
+        writeln!(f, "    Properties: {:?}", exploration.properties)?;
+        
+        if !self.optimizations.is_empty() {
+            writeln!(f, "\n  Optimizations:")?;
+            for (required, optimization) in &self.optimizations {
+                let opt = optimization.borrow();
+                writeln!(f, "    Required: {}", required)?;
+                writeln!(f, "      Status: {:?}", opt.status)?;
+                writeln!(f, "      Costed Exprs: [")?;
+                for costed in &opt.costed_exprs {
+                    writeln!(f, "        - {} op_cost={:?} total_cost={:?}",
+                             costed.group_expr.id(),
+                             costed.operator_cost,
+                             costed.total_cost)?;
+                }
+                writeln!(f, "      ]")?;
+                if !opt.enforcers.is_empty() {
+                    writeln!(f, "      Enforcers: {:?}", opt.enforcers)?;
+                }
+            }
+        }
+        
+        writeln!(f, "}}")
+    }
 }
 
 impl MemoGroup {

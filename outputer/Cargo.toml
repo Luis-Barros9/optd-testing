@@ -1,0 +1,16 @@
+[package]
+name = "outputer"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+datafusion = { workspace = true }
+itertools = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+optd-datafusion = { path = "../connectors/datafusion" }
+sqlparser = "0.61.0"
+arrow = "58.0.0"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

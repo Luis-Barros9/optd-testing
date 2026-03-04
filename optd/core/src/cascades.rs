@@ -62,6 +62,12 @@ impl Cascades {
         let best_plan = self
             .extract_best_group_expr(&best_root, group_id, properties)
             .await?;
+
+        // DEBUG: print MEMO  
+       // info!("optimized plan: {:#?}", best_plan);
+        let memo = self.memo.read().await;
+        println!("memo: {:#?}", memo);
+        //print!("optimized plan: {:#?}", best_plan);
         Some(best_plan)
     }
 

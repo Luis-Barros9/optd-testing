@@ -1,0 +1,69 @@
+physical_plan after optd-finalized:
++---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| EnforcerSort { tuple_ordering: [(v#33, Desc), (v#12, Asc)], (.output_columns): {v#12, v#15, v#17, v#33}, (.cardinality): 0.01 }                                                       |
+| └── PhysicalProject                                                                                                                                                                   |
+|     ├── .projections:                                                                                                                                                                 |
+|     │   ┌── lineitem.l_orderkey(v#17) := lineitem.l_orderkey(v#17)                                                                                                                    |
+|     │   ├── revenue(v#33) := revenue(v#33)                                                                                                                                            |
+|     │   ├── orders.o_orderdate(v#12) := orders.o_orderdate(v#12)                                                                                                                      |
+|     │   └── orders.o_shippriority(v#15) := orders.o_shippriority(v#15)                                                                                                                |
+|     ├── (.output_columns): {v#12, v#15, v#17, v#33}                                                                                                                                   |
+|     ├── (.cardinality): 0.01                                                                                                                                                          |
+|     └── PhysicalHashAggregate                                                                                                                                                         |
+|         ├── .exprs: [ revenue(v#33) := sum(lineitem.l_extendedprice(v#22) * 1::decimal128(20, 0) - lineitem.l_discount(v#23)) ]                                                       |
+|         ├── .keys:                                                                                                                                                                    |
+|         │   ┌── lineitem.l_orderkey(v#17) := lineitem.l_orderkey(v#17)                                                                                                                |
+|         │   ├── orders.o_orderdate(v#12) := orders.o_orderdate(v#12)                                                                                                                  |
+|         │   └── orders.o_shippriority(v#15) := orders.o_shippriority(v#15)                                                                                                            |
+|         ├── (.output_columns): {v#12, v#15, v#17, v#33}                                                                                                                               |
+|         ├── (.cardinality): 0.01                                                                                                                                                      |
+|         └── PhysicalProject                                                                                                                                                           |
+|             ├── .projections:                                                                                                                                                         |
+|             │   ┌── orders.o_orderdate(v#12) := orders.o_orderdate(v#12)                                                                                                              |
+|             │   ├── orders.o_shippriority(v#15) := orders.o_shippriority(v#15)                                                                                                        |
+|             │   ├── lineitem.l_orderkey(v#17) := lineitem.l_orderkey(v#17)                                                                                                            |
+|             │   ├── lineitem.l_extendedprice(v#22) := lineitem.l_extendedprice(v#22)                                                                                                  |
+|             │   └── lineitem.l_discount(v#23) := lineitem.l_discount(v#23)                                                                                                            |
+|             ├── (.output_columns): {v#12, v#15, v#17, v#22, v#23}                                                                                                                     |
+|             ├── (.cardinality): 216205920000.00                                                                                                                                       |
+|             └── PhysicalHashJoin                                                                                                                                                      |
+|                 ├── .join_type: Inner                                                                                                                                                 |
+|                 ├── .join_conds: (lineitem.l_orderkey(v#17) = orders.o_orderkey(v#8)) AND (true::boolean)                                                                             |
+|                 ├── (.output_columns): {v#8, v#12, v#15, v#17, v#22, v#23}                                                                                                            |
+|                 ├── (.cardinality): 216205920000.00                                                                                                                                   |
+|                 ├── PhysicalProject                                                                                                                                                   |
+|                 │   ├── .projections:                                                                                                                                                 |
+|                 │   │   ┌── lineitem.l_orderkey(v#17) := lineitem.l_orderkey(v#17)                                                                                                    |
+|                 │   │   ├── lineitem.l_extendedprice(v#22) := lineitem.l_extendedprice(v#22)                                                                                          |
+|                 │   │   └── lineitem.l_discount(v#23) := lineitem.l_discount(v#23)                                                                                                    |
+|                 │   ├── (.output_columns): {v#17, v#22, v#23}                                                                                                                         |
+|                 │   ├── (.cardinality): 60057.20                                                                                                                                      |
+|                 │   └── PhysicalFilter                                                                                                                                                |
+|                 │       ├── .predicate: (lineitem.l_shipdate(v#27) > 1995-03-29::date32) AND (lineitem.l_orderkey(v#17) <= 37500::bigint)                                             |
+|                 │       ├── (.output_columns): {v#17, v#22, v#23, v#27}                                                                                                               |
+|                 │       ├── (.cardinality): 60057.20                                                                                                                                  |
+|                 │       └── PhysicalTableScan { .source: 3, (.output_columns): {v#17, v#22, v#23, v#27}, (.cardinality): 600572.00 }                                                  |
+|                 └── PhysicalProject                                                                                                                                                   |
+|                     ├── .projections:                                                                                                                                                 |
+|                     │   ┌── orders.o_orderkey(v#8) := orders.o_orderkey(v#8)                                                                                                          |
+|                     │   ├── orders.o_orderdate(v#12) := orders.o_orderdate(v#12)                                                                                                      |
+|                     │   └── orders.o_shippriority(v#15) := orders.o_shippriority(v#15)                                                                                                |
+|                     ├── (.output_columns): {v#8, v#12, v#15}                                                                                                                          |
+|                     ├── (.cardinality): 9000000.00                                                                                                                                    |
+|                     └── PhysicalHashJoin                                                                                                                                              |
+|                         ├── .join_type: Inner                                                                                                                                         |
+|                         ├── .join_conds: (customer.c_custkey(v#0) = orders.o_custkey(v#9)) AND (true::boolean)                                                                        |
+|                         ├── (.output_columns): {v#0, v#8, v#9, v#12, v#15}                                                                                                            |
+|                         ├── (.cardinality): 9000000.00                                                                                                                                |
+|                         ├── PhysicalProject { .projections: [ customer.c_custkey(v#0) := customer.c_custkey(v#0) ], (.output_columns): {v#0}, (.cardinality): 1500.00 }               |
+|                         │   └── PhysicalFilter                                                                                                                                        |
+|                         │       ├── .predicate: (customer.c_mktsegment(v#6) = FURNITURE::utf8_view) AND (customer.c_custkey(v#0) <= 3750::bigint)                                     |
+|                         │       ├── (.output_columns): {v#0, v#6}                                                                                                                     |
+|                         │       ├── (.cardinality): 1500.00                                                                                                                           |
+|                         │       └── PhysicalTableScan { .source: 1, (.output_columns): {v#0, v#6}, (.cardinality): 15000.00 }                                                         |
+|                         └── PhysicalFilter                                                                                                                                            |
+|                             ├── .predicate: (orders.o_orderkey(v#8) <= 37500::bigint) AND (orders.o_orderdate(v#12) < 1995-03-29::date32) AND (orders.o_custkey(v#9) <= 3750::bigint) |
+|                             ├── (.output_columns): {v#8, v#9, v#12, v#15}                                                                                                             |
+|                             ├── (.cardinality): 15000.00                                                                                                                              |
+|                             └── PhysicalTableScan { .source: 2, (.output_columns): {v#8, v#9, v#12, v#15}, (.cardinality): 150000.00 }                                                |
++---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
