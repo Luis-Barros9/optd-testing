@@ -51,6 +51,12 @@ impl Group {
             common: IRCommon::with_properties_only(properties),
         }
     }
+
+    pub fn dump_to_db(&self) 
+    {
+        
+    }
+
 }
 
 impl Explain for GroupBorrowed<'_> {

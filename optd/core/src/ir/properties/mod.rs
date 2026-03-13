@@ -38,6 +38,9 @@ pub struct OperatorProperties {
     pub cardinality: OnceLock<Cardinality>,
 }
 
+
+
+
 /// Common properties structure for IR scalars.
 #[derive(Debug, Default)]
 pub struct ScalarProperties;

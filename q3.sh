@@ -5,8 +5,8 @@ PLAN_FOLDER="./executeResults"
 N=20
 SF=0.1
 EXEC="cargo run -p outputer -- "
-QUERY_FILE="./q3.params.sql"
-YML_TEMPLATE="./q18.params.yml"
+QUERY_FILE="./sqlFiles/q3.params.sql"
+YML_TEMPLATE="./sqlFiles/q3.params.yml"
 TEST_FOLDER="."
 
 

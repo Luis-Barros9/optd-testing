@@ -38,7 +38,20 @@ impl Cascades {
         plan: &Arc<Operator>,
         required: Arc<Required>,
     ) -> Option<Arc<Operator>> {
+        
+
+        //println!("optimizing plan: {:#?}", plan);
+        //println!("required properties: {:#?}", required);
         let group_id = self.insert_new_operator(plan).await;
+
+        
+        //visualizar a criação dos grupos por explorar(NotStarted)
+        //println!("Initial memo");
+        //println!("memo: {:#?}", self.memo.read().await);
+        
+        //TODO alterar aqui para carregar da base de dados o memo, ver ainda melhor o que sao as properties
+
+
         let fut = self.find_best_costed_expr_for(group_id, required);
         let rx = fut.await;
         let best_root = {
@@ -48,7 +61,7 @@ impl Cascades {
                 .min_by(|x, y| x.total_cost.as_f64().total_cmp(&y.total_cost.as_f64()))
                 .cloned()
         }?;
-
+ 
         let properties = {
             let reader = self.memo.read().await;
             reader
@@ -64,9 +77,11 @@ impl Cascades {
             .await?;
 
         // DEBUG: print MEMO  
-       // info!("optimized plan: {:#?}", best_plan);
-        let memo = self.memo.read().await;
-        println!("memo: {:#?}", memo);
+        // info!("optimized plan: {:#?}", best_plan);
+        //println!("Final memo");
+        // println!("memo: {:#?}", self.memo.read().await);
+        // println!("Sql Insert Statements to persist the memo:");
+        self.memo.read().await.dump_to_db();
         //print!("optimized plan: {:#?}", best_plan);
         Some(best_plan)
     }

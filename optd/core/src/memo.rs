@@ -1,8 +1,11 @@
+
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::Debug,
     sync::{Arc, atomic::AtomicI64},
 };
+
+
 
 use itertools::Itertools;
 use tokio::sync::watch;
@@ -60,7 +63,7 @@ impl std::fmt::Debug for MemoGroupExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemoGroupExpr")
             .field("meta", &self.meta)
-            .field("ops", &self.input_operators())
+            .field("inputs", &self.input_operators())
             .field("scalars", &self.input_scalars())
             .finish()
     }
@@ -136,10 +139,16 @@ pub struct MemoTable {
     ctx: IRContext,
 }
 
+
+
 impl std::fmt::Debug for MemoTable 
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "MemoTable {{")?;
+        writeln!(f, "  Scalars")?;
+        for (scalar_id, scalar) in &self.scalar_id_to_key {
+            writeln!(f, "    {} = {:?}\n", scalar_id, scalar)?;
+        }
         writeln!(f, "  Groups: {}\n", self.groups.len())?;
         
         for (group_id, group) in &self.groups {
@@ -153,14 +162,7 @@ impl std::fmt::Debug for MemoTable
             writeln!(f, "      Status: {:?}", exploration.status)?;
             writeln!(f, "      Expressions: [")?;
             for expr in &exploration.exprs {
-                write!(f, "        - {} {:?}", expr.id(), expr.key())?;
-                let input_ops = expr.key().input_operators();
-                if !input_ops.is_empty() {
-                    write!(f, " inputs: {:?}", input_ops)?;
-                }             
-                
-                writeln!(f, "")?;
-
+                writeln!(f, "        - {} {:?}", expr.id(), expr.key())?;
             }
             writeln!(f, "      ]")?;
             writeln!(f, "      Properties: {:?}", exploration.properties)?;
@@ -204,11 +206,43 @@ impl MemoTable {
             ctx,
         }
     }
+
+
+    pub fn dump_to_db(&self){
+        //TODO dump the memo to the database, see memo.sql for the schema
+        // let timestamp = SystemTime::now(); for now use default
+        for (scalar_id, scalar) in &self.scalar_id_to_key {
+            println!("insert into scalar (id, kind, referenced) values ({}, '{:?}', true);", scalar_id.0, &scalar.kind);
+            // TODO: loop through the input_scalars of each scalar recursively and insert into scalar adding a reference to the parent
+            let mut queue: VecDeque<(Arc<Scalar>, GroupId)> = scalar
+                .input_scalars()
+                .iter()
+                .cloned()
+                .map(|s| (s, *scalar_id))
+                .collect();
+
+            while let Some((scalar, parent_id)) = queue.pop_front() {
+                let id = GroupId::from(self.id_allocator.next_id());
+                println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{:?}', false, {})", id.0, &scalar.kind, parent_id.0);
+                queue.extend(
+                    scalar.
+                    input_scalars().
+                    iter().
+                    cloned().
+                    map(|s| (s,  id)));           
+            }
+        }
+
+        for (_group_id, group) in &self.groups {
+            group.dump_to_db();
+        }
+
+    }
     /// Adds an operator to the memo table.
     ///
     /// Returns the group id where the operator belongs:
     /// - If it's a new operator: creates a new memo group and returns its id.
-    /// - If it already exists: returns the existing group id.
+    /// - If it already exists: returns txisting group id.
     ///
     /// **Note:** This would not trigger group merges.
     #[instrument(parent = None, skip_all)]
@@ -256,13 +290,14 @@ impl MemoTable {
                 "got existing group {}, group merges triggered",
                 from_group_id
             );
-            // self.dump();
+            self.dump();
             self.merge_group(into_group_id, from_group_id);
             trace!("group merging finished");
-            // self.dump();
+            self.dump();
             into_group_id
         })
     }
+
     /// Inserts an operator into the memo table and returns its memo expression.
     ///
     /// This is the core method for adding operators to the memo table. It recursively processes
@@ -733,6 +768,40 @@ pub struct MemoGroup {
     pub group_id: GroupId,
     pub exploration: watch::Sender<Exploration>,
     pub optimizations: HashMap<Arc<Required>, watch::Sender<Optimization>>,
+}
+
+impl MemoGroup {
+    fn dump_to_db(&self){
+            let exploration = self.exploration.borrow();
+            if let Some(first_expr) = exploration.exprs.first() {
+                let card = exploration.properties.cardinality.get().map(|c| c.as_f64()).unwrap_or(-1.0);
+                let columns = exploration
+                    .properties
+                    .output_columns
+                    .get()
+                    .map(|cols| cols.iter().map(|c| c.0.to_string()).join(","))
+                    .unwrap_or("?".to_string());
+                println!(
+                    "insert into group (id,logical_expression,cardinality,columns) values ({},'{:?}',{:?},'{}');",
+                    self.group_id.0,
+                    first_expr.key().meta,
+                    card,
+                    columns
+                );
+            }
+
+            for expr in exploration.exprs.iter().skip(1) {
+                println!("insert into expression (id, group_id, kind) values ({}, {}, '{:?}');", expr.id().0, self.group_id.0, expr.key().kind());
+                let mut position = 0;
+                for input_group in expr.key.input_operators() {
+                    println!("insert into expression_input (expression_id, input_group, position) values ({}, {}, {});", expr.id().0, input_group.0, position);
+                    position += 1;
+                }
+                for input_scalar in expr.key.input_scalars() {
+                    println!("insert into expression_scalar (expression_id, scalar_id) values ({}, {});", expr.id().0, input_scalar.0);
+                }
+            }           
+    }
 }
 
 

@@ -121,7 +121,6 @@ impl TableProvider for OptdTableProvider {
 
     fn statistics(&self) -> Option<Statistics> {
         let stats = self.inner.statistics();
-
         if let Some(ref s) = stats {
             tracing::debug!(
                 "Retrieved statistics from inner provider for table {} (num_rows={:?}, total_byte_size={:?})",

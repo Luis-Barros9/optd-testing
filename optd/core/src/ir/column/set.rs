@@ -44,6 +44,7 @@ impl ColumnSet {
     pub fn as_hash_set(self) -> HashSet<Column> {
         self.0
     }
+    
 }
 
 impl std::ops::BitOr<&ColumnSet> for ColumnSet {

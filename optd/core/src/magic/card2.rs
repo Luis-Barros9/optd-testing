@@ -6,9 +6,9 @@ use crate::ir::{
     scalar::*,
 };
 
-pub struct MagicCardinalityEstimator;
+pub struct MagicCardinalityEstimator2;
 
-impl MagicCardinalityEstimator {
+impl MagicCardinalityEstimator2 {
     const MAGIC_JOIN_COND_SELECTIVITY: f64 = 0.4;
     const MAGIC_PREDICATE_SELECTIVITY: f64 = 0.1;
     const MAGIC_GROUP_BY_KEY_NDV_FACTOR: f64 = 0.2;
@@ -16,7 +16,7 @@ impl MagicCardinalityEstimator {
     const MAGIC_DEFAULT_CARDINALITY: usize = 1000;
 }
 
-impl CardinalityEstimator for MagicCardinalityEstimator {
+impl CardinalityEstimator for MagicCardinalityEstimator2 {
     fn estimate(
         &self,
         op: &crate::ir::Operator,
@@ -25,14 +25,12 @@ impl CardinalityEstimator for MagicCardinalityEstimator {
         use crate::ir::OperatorKind;
         let join_selectivity = |join_cond: &Scalar| {
             if let Ok(literal) = join_cond.try_borrow::<Literal>() {
-                //println!("join condition selectivity  is a literal: {:?}", literal.value());
                 match literal.value() {
                     crate::ir::ScalarValue::Boolean(Some(true)) => 1.,
                     crate::ir::ScalarValue::Boolean(_) => 0.,
                     _ => unreachable!("join condition must be boolean"),
                 }
             } else {
-                //println!("join condition selectivity is not a literal, using default");
                 Self::MAGIC_JOIN_COND_SELECTIVITY
             }
         };
@@ -43,7 +41,7 @@ impl CardinalityEstimator for MagicCardinalityEstimator {
                 match *join_type {
                     JoinType::Mark(_) => left_card,
                     JoinType::Single => {
-                        let selectivity: f64 = join_selectivity(join_cond);
+                        let selectivity = join_selectivity(join_cond);
                         (selectivity * left_card * right_card)
                             .map(|value| value.min(left_card.as_f64()))
                     }
@@ -61,14 +59,14 @@ impl CardinalityEstimator for MagicCardinalityEstimator {
             OperatorKind::LogicalGet(meta) => match ctx.cat.describe_table(meta.source).stats {
                 Some(stats) => Cardinality::with_count_lossy(stats.row_count),
                 None => Cardinality::with_count_lossy(
-                    MagicCardinalityEstimator::MAGIC_DEFAULT_CARDINALITY,
+                    MagicCardinalityEstimator2::MAGIC_DEFAULT_CARDINALITY,
                 ),
             },
             OperatorKind::PhysicalTableScan(meta) => {
                 match ctx.cat.describe_table(meta.source).stats {
                     Some(stats) => Cardinality::with_count_lossy(stats.row_count),
                     None => Cardinality::with_count_lossy(
-                        MagicCardinalityEstimator::MAGIC_DEFAULT_CARDINALITY,
+                        MagicCardinalityEstimator2::MAGIC_DEFAULT_CARDINALITY,
                     ),
                 }
             }
