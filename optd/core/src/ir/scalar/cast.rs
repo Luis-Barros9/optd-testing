@@ -36,6 +36,22 @@ impl Cast {
     }
 }
 
+impl CastMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ data_type: {:?} }}", self.data_type)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() || metadata.starts_with("{ data_type: ") {
+            return Some(Self {
+                data_type: DataType::Null,
+            });
+        }
+        None
+    }
+}
+
 impl Explain for CastBorrowed<'_> {
     fn explain<'a>(
         &self,

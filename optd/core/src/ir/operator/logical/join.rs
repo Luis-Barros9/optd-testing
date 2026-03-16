@@ -36,6 +36,58 @@ pub enum JoinType {
     Mark(Column),
 }
 
+impl JoinType {
+    pub fn get_metadata_string(&self) -> String {
+        match self {
+            JoinType::Inner => "Inner".to_string(),
+            JoinType::Left => "Left".to_string(),
+            JoinType::Single => "Single".to_string(),
+            JoinType::Mark(col) => format!("Mark({})", col.0),
+        }
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        match metadata {
+            "Inner" => Some(JoinType::Inner),
+            "Left" => Some(JoinType::Left),
+            "Single" => Some(JoinType::Single),
+            _ => {
+                let value = metadata
+                    .strip_prefix("Mark(")
+                    .and_then(|m| m.strip_suffix(")"))?
+                    .trim()
+                    .parse::<usize>()
+                    .ok()?;
+                Some(JoinType::Mark(Column(value)))
+            }
+        }
+    }
+}
+
+impl LogicalJoinMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ join_type: {} }}", self.join_type.get_metadata_string())
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                join_type: JoinType::Inner,
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let join = payload.strip_prefix("join_type: ")?.trim();
+        Some(Self {
+            join_type: JoinType::from_metadata_string(join)?,
+        })
+    }
+}
+
 impl LogicalJoin {
     pub fn new(
         join_type: JoinType,

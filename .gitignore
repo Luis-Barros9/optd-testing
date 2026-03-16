@@ -18,3 +18,5 @@ data/
 
 # macOS
 .DS_Store
+
+/outputs

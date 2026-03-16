@@ -35,6 +35,22 @@ impl Literal {
     }
 }
 
+impl LiteralMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ value: {} }}", self.value)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() || metadata.starts_with("{ value: ") {
+            return Some(Self {
+                value: ScalarValue::Utf8(None),
+            });
+        }
+        None
+    }
+}
+
 impl Literal {
     pub fn boolean(v: impl Into<Option<bool>>) -> Self {
         Self::new(ScalarValue::Boolean(v.into()))

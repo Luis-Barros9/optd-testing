@@ -71,6 +71,41 @@ impl BinaryOp {
     }
 }
 
+impl BinaryOpMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ op_kind: {} }}", self.op_kind)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                op_kind: BinaryOpKind::Eq,
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let value = payload.strip_prefix("op_kind: ")?.trim();
+        let op_kind = match value {
+            "+" => BinaryOpKind::Plus,
+            "-" => BinaryOpKind::Minus,
+            "*" => BinaryOpKind::Multiply,
+            "/" => BinaryOpKind::Divide,
+            "%" => BinaryOpKind::Modulo,
+            "=" => BinaryOpKind::Eq,
+            "IS NOT DISTINCT FROM" => BinaryOpKind::IsNotDistinctFrom,
+            "<" => BinaryOpKind::Lt,
+            "<=" => BinaryOpKind::Le,
+            ">" => BinaryOpKind::Gt,
+            ">=" => BinaryOpKind::Ge,
+            _ => return None,
+        };
+        Some(Self { op_kind })
+    }
+}
+
 impl BinaryOpBorrowed<'_> {
     pub fn is_plus(&self) -> bool {
         matches!(self.op_kind(), BinaryOpKind::Plus)

@@ -33,6 +33,20 @@ impl List {
     }
 }
 
+impl ListMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        "".to_string()
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        if metadata.trim().is_empty() {
+            Some(Self {})
+        } else {
+            None
+        }
+    }
+}
+
 impl Explain for ListBorrowed<'_> {
     fn explain<'a>(
         &self,

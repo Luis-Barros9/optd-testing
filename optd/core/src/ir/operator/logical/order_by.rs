@@ -50,6 +50,59 @@ impl LogicalOrderBy {
     }
 }
 
+impl LogicalOrderByMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        let directions = self
+            .directions
+            .iter()
+            .map(|is_asc| is_asc.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{{ directions: [{}] }}", directions)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                directions: BitVec::new().into_boxed_bitslice(),
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let list = payload
+            .strip_prefix("directions: ")?
+            .trim()
+            .strip_prefix("[")?
+            .strip_suffix("]")?
+            .trim();
+
+        let parsed = if list.is_empty() {
+            Vec::new()
+        } else {
+            list.split(", ")
+                .map(|v| match v.trim() {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()?
+        };
+
+        let mut bits = BitVec::new();
+        for v in parsed {
+            bits.push(v);
+        }
+
+        Some(Self {
+            directions: bits.into_boxed_bitslice(),
+        })
+    }
+}
+
 impl LogicalOrderByBorrowed<'_> {
     /// Try extracts the associated tuple ordering if all the ordered exprs are of type [`ColumnRef`].
     /// On error, returns a list of all scalar expressions that are not [`ColumnRef`].

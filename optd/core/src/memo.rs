@@ -207,12 +207,25 @@ impl MemoTable {
         }
     }
 
+    pub fn load_from_db(&mut self){
+        //TODO load the memo from the database, see memo.sql for the schema
+        // make sure the structures are empty before loading
+        
+
+    }
 
     pub fn dump_to_db(&self){
         //TODO dump the memo to the database, see memo.sql for the schema
         // let timestamp = SystemTime::now(); for now use default
         for (scalar_id, scalar) in &self.scalar_id_to_key {
-            println!("insert into scalar (id, kind, referenced) values ({}, '{:?}', true);", scalar_id.0, &scalar.kind);
+            let kind = scalar.kind.get_kind_string();
+            let metadata = scalar.kind.get_metadata_string();
+            if metadata.is_empty() {
+                println!("insert into scalar (id, kind, referenced) values ({}, '{}', true);", scalar_id.0, kind);
+            } else {
+                println!("insert into scalar (id, kind, metadata, referenced) values ({}, '{}', '{}', true);", scalar_id.0, kind, metadata);
+            }
+            //println!("insert into scalar (id, kind, referenced) values ({}, '{:?}', true);", scalar_id.0, &scalar.kind);
             // TODO: loop through the input_scalars of each scalar recursively and insert into scalar adding a reference to the parent
             let mut queue: VecDeque<(Arc<Scalar>, GroupId)> = scalar
                 .input_scalars()
@@ -223,7 +236,14 @@ impl MemoTable {
 
             while let Some((scalar, parent_id)) = queue.pop_front() {
                 let id = GroupId::from(self.id_allocator.next_id());
-                println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{:?}', false, {})", id.0, &scalar.kind, parent_id.0);
+                let kind = scalar.kind.get_kind_string();
+                let metadata = scalar.kind.get_metadata_string();
+                if metadata.is_empty() {
+                    println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{}', false, {});", id.0, kind, parent_id.0);
+                } else {
+                    println!("insert into scalar (id, kind, metadata, referenced, parent_scalar) values ({}, '{}', '{}', false, {});", id.0, kind, metadata, parent_id.0);
+                }
+                //println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{:?}', false, {})", id.0, &scalar.kind, parent_id.0);
                 queue.extend(
                     scalar.
                     input_scalars().
@@ -781,17 +801,40 @@ impl MemoGroup {
                     .get()
                     .map(|cols| cols.iter().map(|c| c.0.to_string()).join(","))
                     .unwrap_or("?".to_string());
-                println!(
-                    "insert into group (id,logical_expression,cardinality,columns) values ({},'{:?}',{:?},'{}');",
-                    self.group_id.0,
-                    first_expr.key().meta,
-                    card,
-                    columns
-                );
+                let kind = first_expr.key().kind().get_kind_string();
+                let metadata = first_expr.key().kind().get_metadata_string();
+                if metadata.is_empty() {
+                    println!(
+                        "insert into group (id,kind,cardinality,columns) values ({},'{}',{},'{}');",
+                        self.group_id.0,
+                        kind,
+                        card,
+                        columns
+                    );
+                }
+                else{
+                    println!(
+                        "insert into group (id,kind,metadata,cardinality,columns) values ({},'{}','{}',{},'{}');",
+                        self.group_id.0,
+                        kind,
+                        metadata,
+                        card,
+                        columns
+                    );
+                }
             }
 
             for expr in exploration.exprs.iter().skip(1) {
-                println!("insert into expression (id, group_id, kind) values ({}, {}, '{:?}');", expr.id().0, self.group_id.0, expr.key().kind());
+                let kind = expr.key().kind().get_kind_string();
+                let metadata = expr.key().kind().get_metadata_string();
+                if metadata.is_empty() {
+                    println!("insert into expression (id, group_id, kind) values ({}, {}, '{}');", expr.id().0, self.group_id.0, kind);
+
+                }
+                else{
+                    println!("insert into expression (id, group_id, kind, metadata) values ({}, {}, '{}', '{}');", expr.id().0, self.group_id.0, kind, metadata);
+                    
+                }
                 let mut position = 0;
                 for input_group in expr.key.input_operators() {
                     println!("insert into expression_input (expression_id, input_group, position) values ({}, {}, {});", expr.id().0, input_group.0, position);

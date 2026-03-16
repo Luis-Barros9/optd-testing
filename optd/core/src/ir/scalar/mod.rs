@@ -51,6 +51,68 @@ pub enum ScalarKind {
     Like(LikeMetadata),
 }
 
+impl ScalarKind {
+    pub fn get_kind_string(&self) -> String {
+        match self {
+            ScalarKind::Literal(_) => "Literal".to_string(),
+            ScalarKind::ColumnRef(_) => "ColumnRef".to_string(),
+            ScalarKind::ColumnAssign(_) => "ColumnAssign".to_string(),
+            ScalarKind::BinaryOp(_) => "BinaryOp".to_string(),
+            ScalarKind::NaryOp(_) => "NaryOp".to_string(),
+            ScalarKind::List(_) => "List".to_string(),
+            ScalarKind::Function(_) => "Function".to_string(),
+            ScalarKind::Cast(_) => "Cast".to_string(),
+            ScalarKind::Like(_) => "Like".to_string(),
+        }
+    }
+
+    pub fn get_metadata_string(&self) -> String {
+        match self {
+            ScalarKind::Literal(meta) => meta.get_metadata_string(),
+            ScalarKind::ColumnRef(meta) => meta.get_metadata_string(),
+            ScalarKind::ColumnAssign(meta) => meta.get_metadata_string(),
+            ScalarKind::BinaryOp(meta) => meta.get_metadata_string(),
+            ScalarKind::NaryOp(meta) => meta.get_metadata_string(),
+            ScalarKind::List(meta) => meta.get_metadata_string(),
+            ScalarKind::Function(meta) => meta.get_metadata_string(),
+            ScalarKind::Cast(meta) => meta.get_metadata_string(),
+            ScalarKind::Like(meta) => meta.get_metadata_string(),
+        }
+    }
+
+    /// Inverse from kind and metadata strings.
+    ///
+    /// `metadata` may be empty. When provided, it is validated (and parsed for
+    /// simple cases) according to the format produced by `get_metadata_string`.
+    pub fn from_kind_and_metadata_string(kind: &str, metadata: &str) -> Option<ScalarKind> {
+        match kind {
+            "Literal" => Some(ScalarKind::Literal(LiteralMetadata::from_metadata_string(metadata)?)),
+            "ColumnRef" => {
+                Some(ScalarKind::ColumnRef(ColumnRefMetadata::from_metadata_string(metadata)?))
+            }
+            "ColumnAssign" => Some(ScalarKind::ColumnAssign(
+                ColumnAssignMetadata::from_metadata_string(metadata)?,
+            )),
+            "BinaryOp" => {
+                Some(ScalarKind::BinaryOp(BinaryOpMetadata::from_metadata_string(metadata)?))
+            }
+            "NaryOp" => Some(ScalarKind::NaryOp(NaryOpMetadata::from_metadata_string(metadata)?)),
+            "List" => Some(ScalarKind::List(ListMetadata::from_metadata_string(metadata)?)),
+            "Function" => {
+                Some(ScalarKind::Function(FunctionMetadata::from_metadata_string(metadata)?))
+            }
+            "Cast" => Some(ScalarKind::Cast(CastMetadata::from_metadata_string(metadata)?)),
+            "Like" => Some(ScalarKind::Like(LikeMetadata::from_metadata_string(metadata)?)),
+            _ => None,
+        }
+    }
+
+    /// Convenience overload-like helper when only kind is provided.
+    pub fn from_kind_string(kind: &str) -> Option<ScalarKind> {
+        Self::from_kind_and_metadata_string(kind, "")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Scalar {
     pub kind: ScalarKind,
@@ -68,6 +130,7 @@ impl Scalar {
         &self.common.input_scalars
     }
 
+        
     /// Clones the operator, optionally replacing the input operators and the input scalar expressions.
     pub fn clone_with_inputs(
         &self,
@@ -199,5 +262,96 @@ impl Explain for Scalar {
                 Like::borrow_raw_parts(meta, &self.common).explain(ctx, option)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_roundtrip(case_name: &str, kind: ScalarKind) {
+        println!("[scalar-roundtrip] START case={case_name}");
+        let original = Scalar {
+            kind,
+            common: IRCommon::empty(),
+        };
+
+        let kind_str = original.kind.get_kind_string();
+        let metadata_str = original.kind.get_metadata_string();
+        println!(
+            "[scalar-roundtrip] ENCODE case={case_name} kind='{}' metadata='{}'",
+            kind_str, metadata_str
+        );
+
+        let parsed_kind = ScalarKind::from_kind_and_metadata_string(&kind_str, &metadata_str)
+            .unwrap_or_else(|| {
+                panic!(
+                    "scalar roundtrip parse should succeed for kind='{kind_str}', metadata='{metadata_str}'"
+                )
+            });
+        println!("[scalar-roundtrip] PARSE case={case_name} ok");
+
+        let rebuilt = Scalar {
+            kind: parsed_kind,
+            common: IRCommon::empty(),
+        };
+
+        assert_eq!(original, rebuilt);
+        println!("[scalar-roundtrip] END case={case_name} ok");
+    }
+
+    #[test]
+    fn scalar_kind_roundtrip_string_conversion() {
+        assert_roundtrip(
+            "Literal",
+            ScalarKind::Literal(LiteralMetadata {
+                value: ScalarValue::Utf8(None),
+            }),
+        );
+        assert_roundtrip(
+            "ColumnRef",
+            ScalarKind::ColumnRef(ColumnRefMetadata { column: crate::ir::Column(11) }),
+        );
+        assert_roundtrip(
+            "ColumnAssign",
+            ScalarKind::ColumnAssign(ColumnAssignMetadata {
+                column: crate::ir::Column(22),
+            }),
+        );
+        assert_roundtrip(
+            "BinaryOp",
+            ScalarKind::BinaryOp(BinaryOpMetadata {
+                op_kind: BinaryOpKind::IsNotDistinctFrom,
+            }),
+        );
+        assert_roundtrip(
+            "NaryOp",
+            ScalarKind::NaryOp(NaryOpMetadata {
+                op_kind: NaryOpKind::Or,
+            }),
+        );
+        assert_roundtrip("List", ScalarKind::List(ListMetadata {}));
+        assert_roundtrip(
+            "Function",
+            ScalarKind::Function(FunctionMetadata {
+                id: Arc::from(""),
+                kind: FunctionKind::Scalar,
+                return_type: crate::ir::DataType::Null,
+            }),
+        );
+        assert_roundtrip(
+            "Cast",
+            ScalarKind::Cast(CastMetadata {
+                data_type: crate::ir::DataType::Null,
+            }),
+        );
+        assert_roundtrip(
+            "Like",
+            ScalarKind::Like(LikeMetadata {
+                negated: true,
+                escape_char: Some('!'),
+                case_insensative: false,
+            }),
+        );
     }
 }

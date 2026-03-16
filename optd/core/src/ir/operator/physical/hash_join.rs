@@ -53,6 +53,62 @@ impl PhysicalHashJoin {
     }
 }
 
+impl PhysicalHashJoinMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        let keys = self
+            .keys
+            .iter()
+            .map(|(left, right)| format!("({}, {})", left.0, right.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "{{ join_type: {}, keys: [{}] }}",
+            self.join_type.get_metadata_string(),
+            keys
+        )
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                join_type: JoinType::Inner,
+                keys: Arc::new([]),
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let join_part = payload
+            .strip_prefix("join_type: ")?
+            .split_once(", keys: ")?;
+
+        let join_type = JoinType::from_metadata_string(join_part.0.trim())?;
+        let keys_raw = join_part.1.trim().strip_prefix("[")?.strip_suffix("]")?;
+        let keys = if keys_raw.trim().is_empty() {
+            Vec::new()
+        } else {
+            let normalized = keys_raw.trim().strip_prefix("(")?.strip_suffix(")")?;
+            normalized
+                .split("), (")
+                .map(|item| {
+                    let (l, r) = item.split_once(", ")?;
+                    let left = l.trim().parse::<usize>().ok()?;
+                    let right = r.trim().parse::<usize>().ok()?;
+                    Some((Column(left), Column(right)))
+                })
+                .collect::<Option<Vec<_>>>()?
+        };
+
+        Some(Self {
+            join_type,
+            keys: Arc::from(keys.into_boxed_slice()),
+        })
+    }
+}
+
 impl crate::ir::explain::Explain for PhysicalHashJoinBorrowed<'_> {
     fn explain<'a>(
         &self,

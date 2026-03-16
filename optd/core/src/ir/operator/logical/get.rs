@@ -45,6 +45,63 @@ impl LogicalGet {
     }
 }
 
+impl LogicalGetMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        let projections = self
+            .projections
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "{{ source: {}, first_column: {}, projections: [{}] }}",
+            self.source.0, self.first_column.0, projections
+        )
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                source: DataSourceId(0),
+                first_column: Column(0),
+                projections: Arc::new([]),
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+
+        let payload = payload.strip_prefix("source: ")?;
+        let (source_raw, payload) = payload.split_once(", first_column: ")?;
+        let (first_column_raw, projections_raw) = payload.split_once(", projections: ")?;
+
+        let source = DataSourceId(source_raw.trim().parse::<i64>().ok()?);
+        let first_column = Column(first_column_raw.trim().parse::<usize>().ok()?);
+
+        let list = projections_raw
+            .trim()
+            .strip_prefix("[")?
+            .strip_suffix("]")?
+            .trim();
+        let parsed = if list.is_empty() {
+            Vec::new()
+        } else {
+            list.split(',')
+                .map(|n| n.trim().parse::<usize>().ok())
+                .collect::<Option<Vec<_>>>()?
+        };
+
+        Some(Self {
+            source,
+            first_column,
+            projections: Arc::from(parsed.into_boxed_slice()),
+        })
+    }
+}
+
 impl Explain for LogicalGetBorrowed<'_> {
     fn explain<'a>(
         &self,

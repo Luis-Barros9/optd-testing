@@ -36,6 +36,38 @@ impl EnforcerSort {
     }
 }
 
+impl EnforcerSortMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        let tuple_ordering = self
+            .tuple_ordering
+            .iter()
+            .map(|(column, direction)| {
+                format!("{{ column: {}, direction: {} }}", column.0, direction)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{{ tuple_ordering: [{}] }}", tuple_ordering)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                tuple_ordering: TupleOrdering::default(),
+            });
+        }
+
+        // Keep parsing conservative for now: accept only the expected wrapper.
+        if metadata.starts_with("{ tuple_ordering: [") && metadata.ends_with("] }") {
+            return Some(Self {
+                tuple_ordering: TupleOrdering::default(),
+            });
+        }
+        None
+    }
+}
+
 impl Explain for EnforcerSortBorrowed<'_> {
     fn explain<'a>(
         &self,

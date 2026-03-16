@@ -53,6 +53,32 @@ impl NaryOp {
     }
 }
 
+impl NaryOpMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ op_kind: {} }}", self.op_kind)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                op_kind: NaryOpKind::And,
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let value = payload.strip_prefix("op_kind: ")?.trim();
+        let op_kind = match value {
+            "AND" => NaryOpKind::And,
+            "OR" => NaryOpKind::Or,
+            _ => return None,
+        };
+        Some(Self { op_kind })
+    }
+}
+
 impl NaryOpBorrowed<'_> {
     pub fn is_and(&self) -> bool {
         matches!(self.op_kind(), NaryOpKind::And)

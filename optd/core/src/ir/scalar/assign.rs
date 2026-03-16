@@ -36,6 +36,28 @@ impl ColumnAssign {
     }
 }
 
+impl ColumnAssignMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ column: {} }}", self.column.0)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self { column: Column(0) });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let value = payload.strip_prefix("column: ")?.trim();
+        let column = value.parse::<usize>().ok()?;
+        Some(Self {
+            column: Column(column),
+        })
+    }
+}
+
 impl Explain for ColumnAssignBorrowed<'_> {
     fn explain<'a>(
         &self,

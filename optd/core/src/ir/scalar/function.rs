@@ -18,6 +18,16 @@ pub enum FunctionKind {
     Window,
 }
 
+impl FunctionKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FunctionKind::Scalar => "Scalar",
+            FunctionKind::Aggregate => "Aggregate",
+            FunctionKind::Window => "Window",
+        }
+    }
+}
+
 define_node!(
     /// Metadata:
     /// - id: The identifier of the function.
@@ -54,6 +64,37 @@ impl Function {
             },
             common: IRCommon::with_input_scalars_only(params),
         }
+    }
+}
+
+impl FunctionMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!(
+            "{{ id: {}, kind: {}, return_type: {:?} }}",
+            self.id,
+            self.kind.as_str(),
+            self.return_type
+        )
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                id: std::sync::Arc::from(""),
+                kind: FunctionKind::Scalar,
+                return_type: DataType::Null,
+            });
+        }
+
+        if metadata.contains("id:") && metadata.contains("kind:") && metadata.contains("return_type:") {
+            return Some(Self {
+                id: std::sync::Arc::from(""),
+                kind: FunctionKind::Scalar,
+                return_type: DataType::Null,
+            });
+        }
+        None
     }
 }
 

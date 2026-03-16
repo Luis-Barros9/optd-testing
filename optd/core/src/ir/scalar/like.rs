@@ -51,6 +51,59 @@ impl Like {
     }
 }
 
+impl LikeMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        let escape_char = self
+            .escape_char
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "null".to_string());
+
+        format!(
+            "{{ negated: {}, escape_char: {}, case_insensative: {} }}",
+            self.negated, self.escape_char.map(|c| c.to_string()).unwrap_or(escape_char), self.case_insensative
+        )
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                negated: false,
+                escape_char: None,
+                case_insensative: false,
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+
+        let mut negated = None;
+        let mut escape_char = None;
+        let mut case_insensative = None;
+
+        for part in payload.split(", ") {
+            if let Some(v) = part.strip_prefix("negated: ") {
+                negated = v.parse::<bool>().ok();
+            } else if let Some(v) = part.strip_prefix("escape_char: ") {
+                escape_char = if v == "null" {
+                    Some(None)
+                } else {
+                    v.chars().next().map(Some)
+                };
+            } else if let Some(v) = part.strip_prefix("case_insensative: ") {
+                case_insensative = v.parse::<bool>().ok();
+            }
+        }
+
+        Some(Self {
+            negated: negated?,
+            escape_char: escape_char?,
+            case_insensative: case_insensative?,
+        })
+    }
+}
+
 impl Explain for LikeBorrowed<'_> {
     fn explain<'a>(
         &self,

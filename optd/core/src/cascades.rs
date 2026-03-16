@@ -24,6 +24,8 @@ pub struct Cascades {
 
 impl Cascades {
     /// Creates a new Cascades optimizer instance.
+    /// 
+    /// possibilidades, carregar os dados do memo no construtor?
     pub fn new(ctx: IRContext, rule_set: RuleSet) -> Self {
         Self {
             memo: tokio::sync::RwLock::new(MemoTable::new(ctx.clone())),
@@ -31,6 +33,7 @@ impl Cascades {
             rule_set,
         }
     }
+    // uma função que carrega os dados da bd,  e inserir esta no "conector/datafusion/src/planner.rs" antes de chamar o optimize
 
     /// Optimizes a query plan to find the lowest-cost execution plan that satisfies the requirement.
     pub async fn optimize(

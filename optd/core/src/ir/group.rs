@@ -59,6 +59,30 @@ impl Group {
 
 }
 
+impl GroupMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ group_id: {} }}", self.group_id.0)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                group_id: GroupId(0),
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let value = payload.strip_prefix("group_id: ")?.trim();
+        let group_id = value.parse::<i64>().ok()?;
+        Some(Self {
+            group_id: GroupId(group_id),
+        })
+    }
+}
+
 impl Explain for GroupBorrowed<'_> {
     fn explain<'a>(
         &self,

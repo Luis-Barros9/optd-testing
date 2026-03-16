@@ -112,3 +112,37 @@ impl MockScan {
         }
     }
 }
+
+impl MockScanMetadata {
+    pub fn get_metadata_string(&self) -> String {
+        format!("{{ mock_id: {}, spec: <private> }}", self.mock_id)
+    }
+
+    pub fn from_metadata_string(metadata: &str) -> Option<Self> {
+        let metadata = metadata.trim();
+        if metadata.is_empty() {
+            return Some(Self {
+                mock_id: 0,
+                spec: Arc::new(MockSpec::default()),
+            });
+        }
+
+        let payload = metadata
+            .strip_prefix("{ ")
+            .and_then(|m| m.strip_suffix(" }"))?;
+        let (mock_id_part, spec_part) = payload.split_once(", spec: ")?;
+        let mock_id = mock_id_part
+            .strip_prefix("mock_id: ")?
+            .trim()
+            .parse::<usize>()
+            .ok()?;
+        if spec_part.trim() != "<private>" {
+            return None;
+        }
+
+        Some(Self {
+            mock_id,
+            spec: Arc::new(MockSpec::default()),
+        })
+    }
+}

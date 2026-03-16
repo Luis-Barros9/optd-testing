@@ -70,6 +70,7 @@ pub enum OperatorKind {
     PhysicalHashAggregate(PhysicalHashAggregateMetadata),
 }
 
+
 #[derive(Debug, PartialEq)]
 pub enum OperatorCategory {
     Logical,
@@ -103,6 +104,149 @@ impl OperatorKind {
             MockScan(_) => OperatorCategory::Physical,
         }
     }
+
+    pub fn get_kind_string(&self)-> String{
+        use OperatorKind::*;
+        match self{
+            Group(_) => "Group".to_string(),
+            LogicalGet(_) => "LogicalGet".to_string(),
+            LogicalJoin(_) => "LogicalJoin".to_string(),
+            LogicalDependentJoin(_) => "LogicalDependentJoin".to_string(),
+            LogicalProject(_) => "LogicalProject".to_string(),
+            LogicalAggregate(_) => "LogicalAggregate".to_string(),
+            LogicalOrderBy(_) => "LogicalOrderBy".to_string(),
+            LogicalRemap(_) => "LogicalRemap".to_string(),
+            LogicalSelect(_) => "LogicalSelect".to_string(),
+            LogicalSubquery(_) => "LogicalSubquery".to_string(),
+            EnforcerSort(_) => "EnforcerSort".to_string(),
+            PhysicalFilter(_) => "PhysicalFilter".to_string(),
+            PhysicalProject(_) => "PhysicalProject".to_string(),
+            PhysicalHashJoin(_) => "PhysicalHashJoin".to_string(),
+            PhysicalNLJoin(_) => "PhysicalNLJoin".to_string(),
+            PhysicalTableScan(_) => "PhysicalTableScan".to_string(),
+            PhysicalHashAggregate(_) => "PhysicalHashAggregate".to_string(),
+            MockScan(_) => "MockScan".to_string(),
+        }
+    }
+
+    pub fn get_metadata_string(&self) -> String {
+        use OperatorKind::*;
+        match self {
+            Group(meta) => meta.get_metadata_string(),
+            MockScan(meta) => meta.get_metadata_string(),
+            LogicalGet(meta) => meta.get_metadata_string(),
+            LogicalJoin(meta) => meta.get_metadata_string(),
+            LogicalDependentJoin(meta) => meta.get_metadata_string(),
+            LogicalOrderBy(meta) => meta.get_metadata_string(),
+            EnforcerSort(meta) => meta.get_metadata_string(),
+            PhysicalTableScan(meta) => meta.get_metadata_string(),
+            PhysicalNLJoin(meta) => meta.get_metadata_string(),
+            PhysicalHashJoin(meta) => meta.get_metadata_string(),
+            LogicalSelect(_)
+            | LogicalProject(_)
+            | LogicalAggregate(_)
+            | LogicalRemap(_)
+            | LogicalSubquery(_)
+            | PhysicalFilter(_)
+            | PhysicalProject(_)
+            | PhysicalHashAggregate(_) => "".to_string(),
+        }
+    }
+
+    pub fn from_kind_and_metadata_string(kind: &str, metadata: &str) -> Option<OperatorKind> {
+        let metadata = metadata.trim();
+        match kind {
+            "Group" => Some(OperatorKind::Group(GroupMetadata::from_metadata_string(metadata)?)),
+            "MockScan" => {
+                Some(OperatorKind::MockScan(MockScanMetadata::from_metadata_string(metadata)?))
+            }
+            "LogicalGet" => Some(OperatorKind::LogicalGet(LogicalGetMetadata::from_metadata_string(metadata)?)),
+            "LogicalJoin" => {
+                Some(OperatorKind::LogicalJoin(LogicalJoinMetadata::from_metadata_string(metadata)?))
+            }
+            "LogicalDependentJoin" => Some(OperatorKind::LogicalDependentJoin(
+                LogicalDependentJoinMetadata::from_metadata_string(metadata)?,
+            )),
+            "LogicalSelect" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::LogicalSelect(LogicalSelectMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "LogicalProject" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::LogicalProject(LogicalProjectMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "LogicalAggregate" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::LogicalAggregate(LogicalAggregateMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "LogicalOrderBy" => Some(OperatorKind::LogicalOrderBy(
+                LogicalOrderByMetadata::from_metadata_string(metadata)?,
+            )),
+            "LogicalRemap" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::LogicalRemap(LogicalRemapMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "LogicalSubquery" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::LogicalSubquery(LogicalSubqueryMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "EnforcerSort" => {
+                Some(OperatorKind::EnforcerSort(EnforcerSortMetadata::from_metadata_string(metadata)?))
+            }
+            "PhysicalTableScan" => Some(OperatorKind::PhysicalTableScan(
+                PhysicalTableScanMetadata::from_metadata_string(metadata)?,
+            )),
+            "PhysicalNLJoin" => {
+                Some(OperatorKind::PhysicalNLJoin(PhysicalNLJoinMetadata::from_metadata_string(metadata)?))
+            }
+            "PhysicalHashJoin" => Some(OperatorKind::PhysicalHashJoin(
+                PhysicalHashJoinMetadata::from_metadata_string(metadata)?,
+            )),
+            "PhysicalFilter" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::PhysicalFilter(PhysicalFilterMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "PhysicalProject" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::PhysicalProject(PhysicalProjectMetadata {}))
+                } else {
+                    None
+                }
+            }
+            "PhysicalHashAggregate" => {
+                if metadata.is_empty() {
+                    Some(OperatorKind::PhysicalHashAggregate(PhysicalHashAggregateMetadata {}))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn from_kind_string(kind: &str) -> Option<OperatorKind> {
+        Self::from_kind_and_metadata_string(kind, "")
+    }
+
+
 
     /// Returns true if the operator may produce columns as output.
     pub fn maybe_produce_columns(&self) -> bool {
@@ -258,5 +402,97 @@ impl Explain for Operator {
                 LogicalSubquery::borrow_raw_parts(meta, &self.common).explain(ctx, option)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::catalog::DataSourceId;
+    use bitvec::vec::BitVec;
+
+    fn assert_roundtrip(case_name: &str, kind: OperatorKind) {
+        println!("[roundtrip] START case={case_name}");
+        let original = Operator::from_raw_parts(None, kind, IRCommon::empty());
+        let kind_str = original.kind.get_kind_string();
+        let metadata_str = original.kind.get_metadata_string();
+        println!(
+            "[roundtrip] ENCODE case={case_name} kind='{}' metadata='{}'",
+            kind_str, metadata_str
+        );
+
+        let parsed_kind = OperatorKind::from_kind_and_metadata_string(&kind_str, &metadata_str)
+            .unwrap_or_else(|| {
+                panic!(
+                    "roundtrip parse should succeed for kind='{kind_str}', metadata='{metadata_str}'"
+                )
+            });
+        println!("[roundtrip] PARSE case={case_name} ok");
+        let rebuilt = Operator::from_raw_parts(None, parsed_kind, IRCommon::empty());
+
+        assert_eq!(original, rebuilt);
+        println!("[roundtrip] END case={case_name} ok");
+    }
+
+    #[test]
+    fn operator_kind_roundtrip_string_conversion() {
+        assert_roundtrip("Group", OperatorKind::Group(GroupMetadata {
+            group_id: GroupId(7),
+        }));
+
+        assert_roundtrip("MockScan", OperatorKind::MockScan(MockScanMetadata {
+            mock_id: 42,
+            spec: Arc::new(MockSpec::default()),
+        }));
+
+        assert_roundtrip("LogicalGet", OperatorKind::LogicalGet(LogicalGetMetadata {
+            source: DataSourceId(1),
+            first_column: Column(0),
+            projections: Arc::new([0, 1, 2]),
+        }));
+
+        assert_roundtrip("LogicalJoin", OperatorKind::LogicalJoin(LogicalJoinMetadata {
+            join_type: join::JoinType::Mark(Column(3)),
+        }));
+
+        assert_roundtrip("LogicalDependentJoin", OperatorKind::LogicalDependentJoin(
+            LogicalDependentJoinMetadata {
+                join_type: join::JoinType::Left,
+            },
+        ));
+
+        assert_roundtrip("LogicalOrderBy", OperatorKind::LogicalOrderBy(LogicalOrderByMetadata {
+            directions: BitVec::from_iter([true, false, true]).into_boxed_bitslice(),
+        }));
+
+        assert_roundtrip("EnforcerSort", OperatorKind::EnforcerSort(EnforcerSortMetadata {
+            tuple_ordering: Default::default(),
+        }));
+
+        assert_roundtrip("PhysicalTableScan", OperatorKind::PhysicalTableScan(PhysicalTableScanMetadata {
+            source: DataSourceId(9),
+            first_column: Column(10),
+            projections: Arc::new([3, 4, 5]),
+        }));
+
+        assert_roundtrip("PhysicalNLJoin", OperatorKind::PhysicalNLJoin(PhysicalNLJoinMetadata {
+            join_type: join::JoinType::Single,
+        }));
+
+        assert_roundtrip("PhysicalHashJoin", OperatorKind::PhysicalHashJoin(PhysicalHashJoinMetadata {
+            join_type: join::JoinType::Inner,
+            keys: Arc::from(vec![(Column(1), Column(2)), (Column(3), Column(4))]),
+        }));
+
+        assert_roundtrip("LogicalSelect", OperatorKind::LogicalSelect(LogicalSelectMetadata {}));
+        assert_roundtrip("LogicalProject", OperatorKind::LogicalProject(LogicalProjectMetadata {}));
+        assert_roundtrip("LogicalAggregate", OperatorKind::LogicalAggregate(LogicalAggregateMetadata {}));
+        assert_roundtrip("LogicalRemap", OperatorKind::LogicalRemap(LogicalRemapMetadata {}));
+        assert_roundtrip("LogicalSubquery", OperatorKind::LogicalSubquery(LogicalSubqueryMetadata {}));
+        assert_roundtrip("PhysicalFilter", OperatorKind::PhysicalFilter(PhysicalFilterMetadata {}));
+        assert_roundtrip("PhysicalProject", OperatorKind::PhysicalProject(PhysicalProjectMetadata {}));
+        assert_roundtrip("PhysicalHashAggregate", OperatorKind::PhysicalHashAggregate(
+            PhysicalHashAggregateMetadata {},
+        ));
     }
 }

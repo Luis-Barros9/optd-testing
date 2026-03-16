@@ -1,4 +1,5 @@
 use std::fs;
+use std::collections::HashMap;
 use anyhow::{bail, Result};
 use clap::Parser;
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
@@ -28,24 +29,23 @@ struct Cli {
 }
 
 
-pub async fn get_memo_from_db(db: &DataFusionDB) -> Result<Vec<Vec<String>>> {
+pub async fn get_memo_from_db(db: &DataFusionDB) -> Result<HashMap<String, Vec<Vec<String>>>> {
     // possivelmente alterar para não usar strings e usar o record batch
     let statements = [
-        "SELECT * FROM group",
-        "SELECT * FROM expression",
-        "SELECT * FROM expression_input",
-        "SELECT * FROM scalar",
-        "SELECT * FROM expression_scalar",
+        ("group", "SELECT * FROM group"),
+        ("expression", "SELECT * FROM expression"),
+        ("expression_input", "SELECT * FROM expression_input"),
+        ("scalar", "SELECT * FROM scalar"),
+        ("expression_scalar", "SELECT * FROM expression_scalar"),
     ];
 
-    let mut all_rows = Vec::new();
-    for statement in statements {
-
-        let mut rows = execute(db, statement).await?;
-        all_rows.append(&mut rows);
+    let mut memo_rows = HashMap::new();
+    for (table_name, statement) in statements {
+        let rows = execute(db, statement).await?;
+        memo_rows.insert(table_name.to_string(), rows);
     }
 
-    Ok(all_rows)
+    Ok(memo_rows)
 }
 
 pub async fn execute(db: &DataFusionDB, sql: &str) -> Result<Vec<Vec<String>>> {
@@ -186,12 +186,18 @@ async fn main() -> Result<()> {
     let r = &mut result;
 
     // TODO : remover, apenas para debug
-    let res = get_memo_from_db(&db).await?;
-    for row in res {
-        // test only
-        println!("{}", row.join(" "));
-    }
     
+    
+    let res = get_memo_from_db(&db).await?;
+    for (table_name, rows) in res {
+        println!("--- {} ---", table_name);
+        for row in rows {
+            // test only
+            println!("{}", row.join(" "));
+        }
+    }
+
+
     for (idx, (source, sql_query)) in sql_queries.iter().enumerate() {
         let explained_sql = if cli.simple {
             format!("EXPLAIN {}", sql_query)

@@ -10,7 +10,8 @@
 
 create table group (
     id int primary key,
-    logical_expression varchar(255), -- expressão lógica do grupo (importante para fazer o match de uma expressão com um grupo)
+    kind varchar(50), -- tipo de expressão, ex: LogicalScan, LogicalJoin, etc
+    metadata varchar(255),
     created_at timestamp default CURRENT_TIMESTAMP, -- possivelmente usado para detetar se precisa reotimizaçao
     cardinality float,
     columns varchar(255) -- ajustar futuramente para nao ser string (no codigo hashset de collumns, unsigned integers,car )
@@ -39,6 +40,7 @@ create table expression_input (
 create table scalar (
     id int primary key,
     kind varchar(50), -- tipo de scalar, ex: List(ListMetadata) ver depois outra forma que ocupe menos espaço
+    metadata varchar(255),
     referenced boolean, -- se o scalar é referenciado por alguma expressão, pode ser referenciado por um scalar apenas, provavelmente basta ver se a foreign key é null ou não
     parent_scalar int null -- foreign key references scalar(id)
 );
