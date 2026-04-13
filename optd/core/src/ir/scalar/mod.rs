@@ -305,7 +305,7 @@ mod tests {
         assert_roundtrip(
             "Literal",
             ScalarKind::Literal(LiteralMetadata {
-                value: ScalarValue::Utf8(None),
+                value: ScalarValue::Utf8View(Some("FURNITURE".to_string())),
             }),
         );
         assert_roundtrip(
@@ -337,6 +337,14 @@ mod tests {
                 id: Arc::from(""),
                 kind: FunctionKind::Scalar,
                 return_type: crate::ir::DataType::Null,
+            }),
+        );
+        assert_roundtrip(
+            "Function",
+            ScalarKind::Function(FunctionMetadata {
+                id: Arc::from("sum"),
+                kind: FunctionKind::Aggregate,
+                return_type: crate::ir::DataType::Decimal128(38, 4),
             }),
         );
         assert_roundtrip(

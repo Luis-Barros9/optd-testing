@@ -1,177 +1,214 @@
-insert into scalar (id, kind, referenced) values (11, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (55, 'ColumnAssign', '{ column: 8 }', false, 11);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (56, 'ColumnAssign', '{ column: 12 }', false, 11);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (57, 'ColumnAssign', '{ column: 15 }', false, 11);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (58, 'ColumnRef', '{ column: 8 }', false, 55);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (59, 'ColumnRef', '{ column: 12 }', false, 56);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (60, 'ColumnRef', '{ column: 15 }', false, 57);
-insert into scalar (id, kind, referenced) values (4, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (61, 'ColumnAssign', '{ column: 0 }', false, 4);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (62, 'ColumnRef', '{ column: 0 }', false, 61);
-insert into scalar (id, kind, referenced) values (16, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (63, 'ColumnAssign', '{ column: 17 }', false, 16);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (64, 'ColumnAssign', '{ column: 22 }', false, 16);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (65, 'ColumnAssign', '{ column: 23 }', false, 16);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (66, 'ColumnRef', '{ column: 17 }', false, 63);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (67, 'ColumnRef', '{ column: 22 }', false, 64);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (68, 'ColumnRef', '{ column: 23 }', false, 65);
-insert into scalar (id, kind, referenced) values (23, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (69, 'ColumnAssign', '{ column: 17 }', false, 23);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (70, 'ColumnAssign', '{ column: 12 }', false, 23);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (71, 'ColumnAssign', '{ column: 15 }', false, 23);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (72, 'ColumnRef', '{ column: 17 }', false, 69);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (73, 'ColumnRef', '{ column: 12 }', false, 70);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (74, 'ColumnRef', '{ column: 15 }', false, 71);
-insert into scalar (id, kind, metadata, referenced) values (14, 'NaryOp', '{ op_kind: AND }', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (75, 'BinaryOp', '{ op_kind: > }', false, 14);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (76, 'BinaryOp', '{ op_kind: <= }', false, 14);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (77, 'ColumnRef', '{ column: 27 }', false, 75);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (78, 'Literal', '{ value: 1995-03-29::date32 }', false, 75);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (79, 'ColumnRef', '{ column: 17 }', false, 76);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (80, 'Literal', '{ value: 150000::bigint }', false, 76);
-insert into scalar (id, kind, metadata, referenced) values (27, 'ColumnRef', '{ column: 33 }', true);
-insert into scalar (id, kind, metadata, referenced) values (9, 'NaryOp', '{ op_kind: AND }', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (81, 'BinaryOp', '{ op_kind: = }', false, 9);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (82, 'ColumnRef', '{ column: 0 }', false, 81);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (83, 'ColumnRef', '{ column: 9 }', false, 81);
-insert into scalar (id, kind, referenced) values (22, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (84, 'ColumnAssign', '{ column: 33 }', false, 22);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (85, 'Function', '{ id: sum, kind: Aggregate, return_type: Decimal128(38, 4) }', false, 84);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (86, 'BinaryOp', '{ op_kind: * }', false, 85);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (87, 'ColumnRef', '{ column: 22 }', false, 86);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (88, 'BinaryOp', '{ op_kind: - }', false, 86);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (89, 'Literal', '{ value: 1::decimal128(20, 0) }', false, 88);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (90, 'ColumnRef', '{ column: 23 }', false, 88);
-insert into scalar (id, kind, metadata, referenced) values (28, 'ColumnRef', '{ column: 12 }', true);
-insert into scalar (id, kind, referenced) values (20, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (91, 'ColumnAssign', '{ column: 12 }', false, 20);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (92, 'ColumnAssign', '{ column: 15 }', false, 20);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (93, 'ColumnAssign', '{ column: 17 }', false, 20);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (94, 'ColumnAssign', '{ column: 22 }', false, 20);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (95, 'ColumnAssign', '{ column: 23 }', false, 20);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (96, 'ColumnRef', '{ column: 12 }', false, 91);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (97, 'ColumnRef', '{ column: 15 }', false, 92);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (98, 'ColumnRef', '{ column: 17 }', false, 93);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (99, 'ColumnRef', '{ column: 22 }', false, 94);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (100, 'ColumnRef', '{ column: 23 }', false, 95);
-insert into scalar (id, kind, metadata, referenced) values (7, 'NaryOp', '{ op_kind: AND }', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (101, 'BinaryOp', '{ op_kind: <= }', false, 7);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (102, 'BinaryOp', '{ op_kind: < }', false, 7);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (103, 'BinaryOp', '{ op_kind: <= }', false, 7);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (104, 'ColumnRef', '{ column: 8 }', false, 101);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (105, 'Literal', '{ value: 150000::bigint }', false, 101);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (106, 'ColumnRef', '{ column: 12 }', false, 102);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (107, 'Literal', '{ value: 1995-03-29::date32 }', false, 102);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (108, 'ColumnRef', '{ column: 9 }', false, 103);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (109, 'Literal', '{ value: 15000::bigint }', false, 103);
-insert into scalar (id, kind, metadata, referenced) values (34, 'Literal', '{ value: true::boolean }', true);
-insert into scalar (id, kind, referenced) values (25, 'List', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (110, 'ColumnAssign', '{ column: 17 }', false, 25);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (111, 'ColumnAssign', '{ column: 33 }', false, 25);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (112, 'ColumnAssign', '{ column: 12 }', false, 25);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (113, 'ColumnAssign', '{ column: 15 }', false, 25);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (114, 'ColumnRef', '{ column: 17 }', false, 110);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (115, 'ColumnRef', '{ column: 33 }', false, 111);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (116, 'ColumnRef', '{ column: 12 }', false, 112);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (117, 'ColumnRef', '{ column: 15 }', false, 113);
-insert into scalar (id, kind, metadata, referenced) values (18, 'NaryOp', '{ op_kind: AND }', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (118, 'BinaryOp', '{ op_kind: = }', false, 18);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (119, 'ColumnRef', '{ column: 8 }', false, 118);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (120, 'ColumnRef', '{ column: 17 }', false, 118);
-insert into scalar (id, kind, metadata, referenced) values (2, 'NaryOp', '{ op_kind: AND }', true);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (121, 'BinaryOp', '{ op_kind: = }', false, 2);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (122, 'BinaryOp', '{ op_kind: <= }', false, 2);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (123, 'ColumnRef', '{ column: 6 }', false, 121);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (124, 'Literal', '{ value: FURNITURE::utf8_view }', false, 121);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (125, 'ColumnRef', '{ column: 0 }', false, 122);
-insert into scalar (id, kind, metadata, referenced, parent_scalar) values (126, 'Literal', '{ value: 15000::bigint }', false, 122);
-insert into group (id,kind,metadata,cardinality,columns) values (1,'LogicalGet','{ source: 1, first_column: 0, projections: [0, 6] }',15000,'0,6');
-insert into expression (id, group_id, kind, metadata) values (50, 1, 'PhysicalTableScan', '{ source: 1, first_column: 0, projections: [0, 6] }');
-insert into group (id,kind,cardinality,columns) values (3,'LogicalSelect',1500,'6,0');
-insert into expression (id, group_id, kind) values (49, 3, 'PhysicalFilter');
-insert into expression_input (expression_id, input_group, position) values (49, 1, 0);
-insert into expression_scalar (expression_id, scalar_id) values (49, 2);
-insert into group (id,kind,cardinality,columns) values (5,'LogicalProject',1500,'0');
-insert into expression (id, group_id, kind) values (45, 5, 'PhysicalProject');
-insert into expression_input (expression_id, input_group, position) values (45, 3, 0);
-insert into expression_scalar (expression_id, scalar_id) values (45, 4);
-insert into group (id,kind,metadata,cardinality,columns) values (6,'LogicalGet','{ source: 2, first_column: 8, projections: [0, 1, 4, 7] }',150000,'12,9,15,8');
-insert into expression (id, group_id, kind, metadata) values (51, 6, 'PhysicalTableScan', '{ source: 2, first_column: 8, projections: [0, 1, 4, 7] }');
-insert into group (id,kind,cardinality,columns) values (8,'LogicalSelect',15000,'12,8,15,9');
-insert into expression (id, group_id, kind) values (48, 8, 'PhysicalFilter');
-insert into expression_input (expression_id, input_group, position) values (48, 6, 0);
-insert into expression_scalar (expression_id, scalar_id) values (48, 7);
-insert into group (id,kind,metadata,cardinality,columns) values (10,'LogicalJoin','{ join_type: Inner }',9000000,'12,15,0,9,8');
-insert into expression (id, group_id, kind, metadata) values (42, 10, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(0, 9)] }');
-insert into expression_input (expression_id, input_group, position) values (42, 5, 0);
-insert into expression_input (expression_id, input_group, position) values (42, 8, 1);
-insert into expression_scalar (expression_id, scalar_id) values (42, 34);
-insert into expression (id, group_id, kind, metadata) values (43, 10, 'PhysicalNLJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (43, 5, 0);
-insert into expression_input (expression_id, input_group, position) values (43, 8, 1);
-insert into expression_scalar (expression_id, scalar_id) values (43, 9);
-insert into expression (id, group_id, kind, metadata) values (44, 10, 'LogicalJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (44, 8, 0);
-insert into expression_input (expression_id, input_group, position) values (44, 5, 1);
-insert into expression_scalar (expression_id, scalar_id) values (44, 9);
-insert into expression (id, group_id, kind, metadata) values (46, 10, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(9, 0)] }');
-insert into expression_input (expression_id, input_group, position) values (46, 8, 0);
-insert into expression_input (expression_id, input_group, position) values (46, 5, 1);
-insert into expression_scalar (expression_id, scalar_id) values (46, 34);
-insert into expression (id, group_id, kind, metadata) values (47, 10, 'PhysicalNLJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (47, 8, 0);
-insert into expression_input (expression_id, input_group, position) values (47, 5, 1);
-insert into expression_scalar (expression_id, scalar_id) values (47, 9);
-insert into group (id,kind,cardinality,columns) values (12,'LogicalProject',9000000,'15,8,12');
-insert into expression (id, group_id, kind) values (38, 12, 'PhysicalProject');
-insert into expression_input (expression_id, input_group, position) values (38, 10, 0);
-insert into expression_scalar (expression_id, scalar_id) values (38, 11);
-insert into group (id,kind,metadata,cardinality,columns) values (13,'LogicalGet','{ source: 3, first_column: 17, projections: [0, 5, 6, 10] }',600572,'27,23,17,22');
-insert into expression (id, group_id, kind, metadata) values (53, 13, 'PhysicalTableScan', '{ source: 3, first_column: 17, projections: [0, 5, 6, 10] }');
-insert into group (id,kind,cardinality,columns) values (15,'LogicalSelect',60057.200000000004,'23,22,27,17');
-insert into expression (id, group_id, kind) values (52, 15, 'PhysicalFilter');
-insert into expression_input (expression_id, input_group, position) values (52, 13, 0);
-insert into expression_scalar (expression_id, scalar_id) values (52, 14);
-insert into group (id,kind,cardinality,columns) values (17,'LogicalProject',60057.200000000004,'22,17,23');
-insert into expression (id, group_id, kind) values (41, 17, 'PhysicalProject');
-insert into expression_input (expression_id, input_group, position) values (41, 15, 0);
-insert into expression_scalar (expression_id, scalar_id) values (41, 16);
-insert into group (id,kind,metadata,cardinality,columns) values (19,'LogicalJoin','{ join_type: Inner }',216205920000.00003,'23,15,8,12,17,22');
-insert into expression (id, group_id, kind, metadata) values (35, 19, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(8, 17)] }');
-insert into expression_input (expression_id, input_group, position) values (35, 12, 0);
-insert into expression_input (expression_id, input_group, position) values (35, 17, 1);
-insert into expression_scalar (expression_id, scalar_id) values (35, 34);
-insert into expression (id, group_id, kind, metadata) values (36, 19, 'PhysicalNLJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (36, 12, 0);
-insert into expression_input (expression_id, input_group, position) values (36, 17, 1);
-insert into expression_scalar (expression_id, scalar_id) values (36, 18);
-insert into expression (id, group_id, kind, metadata) values (37, 19, 'LogicalJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (37, 17, 0);
-insert into expression_input (expression_id, input_group, position) values (37, 12, 1);
-insert into expression_scalar (expression_id, scalar_id) values (37, 18);
-insert into expression (id, group_id, kind, metadata) values (39, 19, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(17, 8)] }');
-insert into expression_input (expression_id, input_group, position) values (39, 17, 0);
-insert into expression_input (expression_id, input_group, position) values (39, 12, 1);
-insert into expression_scalar (expression_id, scalar_id) values (39, 34);
-insert into expression (id, group_id, kind, metadata) values (40, 19, 'PhysicalNLJoin', '{ join_type: Inner }');
-insert into expression_input (expression_id, input_group, position) values (40, 17, 0);
-insert into expression_input (expression_id, input_group, position) values (40, 12, 1);
-insert into expression_scalar (expression_id, scalar_id) values (40, 18);
-insert into group (id,kind,cardinality,columns) values (21,'LogicalProject',216205920000.00003,'23,15,17,22,12');
-insert into expression (id, group_id, kind) values (33, 21, 'PhysicalProject');
-insert into expression_input (expression_id, input_group, position) values (33, 19, 0);
-insert into expression_scalar (expression_id, scalar_id) values (33, 20);
-insert into group (id,kind,cardinality,columns) values (24,'LogicalAggregate',0.008000000000000002,'15,12,33,17');
-insert into expression (id, group_id, kind) values (32, 24, 'PhysicalHashAggregate');
-insert into expression_input (expression_id, input_group, position) values (32, 21, 0);
-insert into expression_scalar (expression_id, scalar_id) values (32, 22);
-insert into expression_scalar (expression_id, scalar_id) values (32, 23);
-insert into expression (id, group_id, kind, metadata) values (54, 24, 'EnforcerSort', '{ tuple_ordering: [{ column: 33, direction: DESC }, { column: 12, direction: ASC }] }');
-insert into expression_input (expression_id, input_group, position) values (54, 24, 0);
-insert into group (id,kind,cardinality,columns) values (26,'LogicalProject',0.008000000000000002,'12,15,33,17');
-insert into expression (id, group_id, kind, metadata) values (30, 26, 'EnforcerSort', '{ tuple_ordering: [{ column: 33, direction: DESC }, { column: 12, direction: ASC }] }');
-insert into expression_input (expression_id, input_group, position) values (30, 26, 0);
-insert into expression (id, group_id, kind) values (31, 26, 'PhysicalProject');
-insert into expression_input (expression_id, input_group, position) values (31, 24, 0);
-insert into expression_scalar (expression_id, scalar_id) values (31, 25);
-insert into group (id,kind,metadata,cardinality,columns) values (29,'LogicalOrderBy','{ directions: [false, true] }',0.008000000000000002,'17,15,33,12');
+insert into expression (id, group_id, kind, metadata) VALUES
+  (49, 1, 'PhysicalTableScan', '{ source: 1, first_column: 0, projections: [0, 6] }'),
+  (51, 6, 'PhysicalTableScan', '{ source: 2, first_column: 8, projections: [0, 1, 4, 7] }'),
+  (41, 10, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(0, 9)] }'),
+  (42, 10, 'PhysicalNLJoin', '{ join_type: Inner }'),
+  (43, 10, 'LogicalJoin', '{ join_type: Inner }'),
+  (46, 10, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(9, 0)] }'),
+  (48, 10, 'PhysicalNLJoin', '{ join_type: Inner }'),
+  (53, 13, 'PhysicalTableScan', '{ source: 3, first_column: 17, projections: [0, 5, 6, 10] }'),
+  (35, 19, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(8, 17)] }'),
+  (36, 19, 'PhysicalNLJoin', '{ join_type: Inner }'),
+  (37, 19, 'LogicalJoin', '{ join_type: Inner }'),
+  (39, 19, 'PhysicalHashJoin', '{ join_type: Inner, keys: [(17, 8)] }'),
+  (40, 19, 'PhysicalNLJoin', '{ join_type: Inner }'),
+  (54, 24, 'EnforcerSort', '{ tuple_ordering: [{ column: 33, direction: DESC }, { column: 12, direction: ASC }] }'),
+  (30, 26, 'EnforcerSort', '{ tuple_ordering: [{ column: 33, direction: DESC }, { column: 12, direction: ASC }] }');
+insert into scalar (id, kind, metadata, referenced, parent_scalar, position) VALUES
+  (55, 'ColumnAssign', '{ column: 0 }', false, 4, 0),
+  (56, 'ColumnRef', '{ column: 0 }', false, 55, 0),
+  (57, 'ColumnAssign', '{ column: 12 }', false, 20, 0),
+  (58, 'ColumnAssign', '{ column: 15 }', false, 20, 1),
+  (59, 'ColumnAssign', '{ column: 17 }', false, 20, 2),
+  (60, 'ColumnAssign', '{ column: 22 }', false, 20, 3),
+  (61, 'ColumnAssign', '{ column: 23 }', false, 20, 4),
+  (62, 'ColumnRef', '{ column: 12 }', false, 57, 0),
+  (63, 'ColumnRef', '{ column: 15 }', false, 58, 0),
+  (64, 'ColumnRef', '{ column: 17 }', false, 59, 0),
+  (65, 'ColumnRef', '{ column: 22 }', false, 60, 0),
+  (66, 'ColumnRef', '{ column: 23 }', false, 61, 0),
+  (67, 'BinaryOp', '{ op_kind: = }', false, 2, 0),
+  (68, 'BinaryOp', '{ op_kind: <= }', false, 2, 1),
+  (69, 'ColumnRef', '{ column: 6 }', false, 67, 0),
+  (70, 'Literal', '{ value: FURNITURE::utf8_view }', false, 67, 1),
+  (71, 'ColumnRef', '{ column: 0 }', false, 68, 0),
+  (72, 'Literal', '{ value: 15000::bigint }', false, 68, 1),
+  (73, 'BinaryOp', '{ op_kind: = }', false, 18, 0),
+  (74, 'ColumnRef', '{ column: 8 }', false, 73, 0),
+  (75, 'ColumnRef', '{ column: 17 }', false, 73, 1),
+  (76, 'ColumnAssign', '{ column: 17 }', false, 25, 0),
+  (77, 'ColumnAssign', '{ column: 33 }', false, 25, 1),
+  (78, 'ColumnAssign', '{ column: 12 }', false, 25, 2),
+  (79, 'ColumnAssign', '{ column: 15 }', false, 25, 3),
+  (80, 'ColumnRef', '{ column: 17 }', false, 76, 0),
+  (81, 'ColumnRef', '{ column: 33 }', false, 77, 0),
+  (82, 'ColumnRef', '{ column: 12 }', false, 78, 0),
+  (83, 'ColumnRef', '{ column: 15 }', false, 79, 0),
+  (84, 'ColumnAssign', '{ column: 8 }', false, 11, 0),
+  (85, 'ColumnAssign', '{ column: 12 }', false, 11, 1),
+  (86, 'ColumnAssign', '{ column: 15 }', false, 11, 2),
+  (87, 'ColumnRef', '{ column: 8 }', false, 84, 0),
+  (88, 'ColumnRef', '{ column: 12 }', false, 85, 0),
+  (89, 'ColumnRef', '{ column: 15 }', false, 86, 0),
+  (90, 'BinaryOp', '{ op_kind: > }', false, 14, 0),
+  (91, 'BinaryOp', '{ op_kind: <= }', false, 14, 1),
+  (92, 'ColumnRef', '{ column: 27 }', false, 90, 0),
+  (93, 'Literal', '{ value: 1995-03-29::date32 }', false, 90, 1),
+  (94, 'ColumnRef', '{ column: 17 }', false, 91, 0),
+  (95, 'Literal', '{ value: 150000::bigint }', false, 91, 1),
+  (96, 'ColumnAssign', '{ column: 17 }', false, 23, 0),
+  (97, 'ColumnAssign', '{ column: 12 }', false, 23, 1),
+  (98, 'ColumnAssign', '{ column: 15 }', false, 23, 2),
+  (99, 'ColumnRef', '{ column: 17 }', false, 96, 0),
+  (100, 'ColumnRef', '{ column: 12 }', false, 97, 0),
+  (101, 'ColumnRef', '{ column: 15 }', false, 98, 0),
+  (102, 'BinaryOp', '{ op_kind: <= }', false, 7, 0),
+  (103, 'BinaryOp', '{ op_kind: < }', false, 7, 1),
+  (104, 'BinaryOp', '{ op_kind: <= }', false, 7, 2),
+  (105, 'ColumnRef', '{ column: 8 }', false, 102, 0),
+  (106, 'Literal', '{ value: 150000::bigint }', false, 102, 1),
+  (107, 'ColumnRef', '{ column: 12 }', false, 103, 0),
+  (108, 'Literal', '{ value: 1995-03-29::date32 }', false, 103, 1),
+  (109, 'ColumnRef', '{ column: 9 }', false, 104, 0),
+  (110, 'Literal', '{ value: 15000::bigint }', false, 104, 1),
+  (111, 'BinaryOp', '{ op_kind: = }', false, 9, 0),
+  (112, 'ColumnRef', '{ column: 0 }', false, 111, 0),
+  (113, 'ColumnRef', '{ column: 9 }', false, 111, 1),
+  (114, 'ColumnAssign', '{ column: 33 }', false, 22, 0),
+  (115, 'Function', '{ id: sum, kind: Aggregate, return_type: Decimal128(38, 4) }', false, 114, 0),
+  (116, 'BinaryOp', '{ op_kind: * }', false, 115, 0),
+  (117, 'ColumnRef', '{ column: 22 }', false, 116, 0),
+  (118, 'BinaryOp', '{ op_kind: - }', false, 116, 1),
+  (119, 'Literal', '{ value: 1::decimal128(20, 0) }', false, 118, 0),
+  (120, 'ColumnRef', '{ column: 23 }', false, 118, 1),
+  (121, 'ColumnAssign', '{ column: 17 }', false, 16, 0),
+  (122, 'ColumnAssign', '{ column: 22 }', false, 16, 1),
+  (123, 'ColumnAssign', '{ column: 23 }', false, 16, 2),
+  (124, 'ColumnRef', '{ column: 17 }', false, 121, 0),
+  (125, 'ColumnRef', '{ column: 22 }', false, 122, 0),
+  (126, 'ColumnRef', '{ column: 23 }', false, 123, 0);
+insert into group (id,kind,cardinality,columns) VALUES
+  (3,'LogicalSelect',1500,'0,6'),
+  (5,'LogicalProject',1500,'0'),
+  (8,'LogicalSelect',15000,'9,12,8,15'),
+  (12,'LogicalProject',9000000,'12,15,8'),
+  (15,'LogicalSelect',60057.200000000004,'17,27,22,23'),
+  (17,'LogicalProject',60057.200000000004,'17,22,23'),
+  (21,'LogicalProject',216205920000.00003,'15,17,12,23,22'),
+  (24,'LogicalAggregate',0.008000000000000002,'17,12,15,33'),
+  (26,'LogicalProject',0.008000000000000002,'12,33,15,17');
+insert into scalar (id, kind, metadata, referenced) VALUES
+  (2, 'NaryOp', '{ op_kind: AND }', true),
+  (18, 'NaryOp', '{ op_kind: AND }', true),
+  (14, 'NaryOp', '{ op_kind: AND }', true),
+  (34, 'Literal', '{ value: true::boolean }', true),
+  (7, 'NaryOp', '{ op_kind: AND }', true),
+  (9, 'NaryOp', '{ op_kind: AND }', true),
+  (27, 'ColumnRef', '{ column: 33 }', true),
+  (28, 'ColumnRef', '{ column: 12 }', true);
+insert into expression_input (expression_id, input_group, position) VALUES
+  (3, 1, 0),
+  (47, 1, 0),
+  (5, 3, 0),
+  (44, 3, 0),
+  (8, 6, 0),
+  (50, 6, 0),
+  (10, 5, 0),
+  (10, 8, 1),
+  (41, 5, 0),
+  (41, 8, 1),
+  (42, 5, 0),
+  (42, 8, 1),
+  (43, 8, 0),
+  (43, 5, 1),
+  (46, 8, 0),
+  (46, 5, 1),
+  (48, 8, 0),
+  (48, 5, 1),
+  (12, 10, 0),
+  (38, 10, 0),
+  (15, 13, 0),
+  (52, 13, 0),
+  (17, 15, 0),
+  (45, 15, 0),
+  (19, 12, 0),
+  (19, 17, 1),
+  (35, 12, 0),
+  (35, 17, 1),
+  (36, 12, 0),
+  (36, 17, 1),
+  (37, 17, 0),
+  (37, 12, 1),
+  (39, 17, 0),
+  (39, 12, 1),
+  (40, 17, 0),
+  (40, 12, 1),
+  (21, 19, 0),
+  (33, 19, 0),
+  (24, 21, 0),
+  (32, 21, 0),
+  (54, 24, 0),
+  (26, 24, 0),
+  (30, 26, 0),
+  (31, 24, 0),
+  (29, 26, 0);
+insert into expression_scalar (expression_id, scalar_id, position) VALUES
+  (3, 2, 0),
+  (47, 2, 0),
+  (5, 4, 0),
+  (44, 4, 0),
+  (8, 7, 0),
+  (50, 7, 0),
+  (10, 9, 0),
+  (41, 34, 0),
+  (42, 9, 0),
+  (43, 9, 0),
+  (46, 34, 0),
+  (48, 9, 0),
+  (12, 11, 0),
+  (38, 11, 0),
+  (15, 14, 0),
+  (52, 14, 0),
+  (17, 16, 0),
+  (45, 16, 0),
+  (19, 18, 0),
+  (35, 34, 0),
+  (36, 18, 0),
+  (37, 18, 0),
+  (39, 34, 0),
+  (40, 18, 0),
+  (21, 20, 0),
+  (33, 20, 0),
+  (24, 22, 0),
+  (24, 23, 1),
+  (32, 22, 0),
+  (32, 23, 1),
+  (26, 25, 0),
+  (31, 25, 0),
+  (29, 27, 0),
+  (29, 28, 1);
+insert into expression (id, group_id, kind) VALUES
+  (47, 3, 'PhysicalFilter'),
+  (44, 5, 'PhysicalProject'),
+  (50, 8, 'PhysicalFilter'),
+  (38, 12, 'PhysicalProject'),
+  (52, 15, 'PhysicalFilter'),
+  (45, 17, 'PhysicalProject'),
+  (33, 21, 'PhysicalProject'),
+  (32, 24, 'PhysicalHashAggregate'),
+  (31, 26, 'PhysicalProject');
+insert into scalar (id, kind, referenced) VALUES
+  (4, 'List', true),
+  (20, 'List', true),
+  (25, 'List', true),
+  (11, 'List', true),
+  (23, 'List', true),
+  (22, 'List', true),
+  (16, 'List', true);
+insert into group (id,kind,metadata,cardinality,columns) VALUES
+  (1,'LogicalGet','{ source: 1, first_column: 0, projections: [0, 6] }',15000,'0,6'),
+  (6,'LogicalGet','{ source: 2, first_column: 8, projections: [0, 1, 4, 7] }',150000,'8,15,9,12'),
+  (10,'LogicalJoin','{ join_type: Inner }',9000000,'0,12,9,8,15'),
+  (13,'LogicalGet','{ source: 3, first_column: 17, projections: [0, 5, 6, 10] }',600572,'17,27,22,23'),
+  (19,'LogicalJoin','{ join_type: Inner }',216205920000.00003,'8,23,22,15,12,17'),
+  (29,'LogicalOrderBy','{ directions: [false, true] }',0.008000000000000002,'33,15,12,17');

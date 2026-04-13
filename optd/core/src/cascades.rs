@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use datafusion::arrow::array::RecordBatch;
 use itertools::Itertools;
 use tokio::sync::watch;
 use tracing::{info, instrument, trace};
@@ -33,38 +34,61 @@ impl Cascades {
             rule_set,
         }
     }
-    // uma função que carrega os dados da bd,  e inserir esta no "conector/datafusion/src/planner.rs" antes de chamar o optimize
+   
+   pub async fn load_memo_from_db(&self, data: HashMap<String, Vec<RecordBatch>>) {
+        let mut writer = self.memo.write().await;
+        writer.load_from_db(data);
+
+    }
 
     /// Optimizes a query plan to find the lowest-cost execution plan that satisfies the requirement.
     pub async fn optimize(
         self: &Arc<Self>,
         plan: &Arc<Operator>,
         required: Arc<Required>,
+        persistent_layer: bool,
     ) -> Option<Arc<Operator>> {
-        
 
-        //println!("optimizing plan: {:#?}", plan);
-        //println!("required properties: {:#?}", required);
-        let group_id = self.insert_new_operator(plan).await;
+
+        let group_id = if persistent_layer {
+            GroupId(29) // alterar para conseguir aceder ao id através do plano, uma procura
+        } else {
+            self.insert_new_operator(plan).await
+        };
+        println!("Inserted operator into memo with group_id: {group_id}");
+
 
         
         //visualizar a criação dos grupos por explorar(NotStarted)
-        //println!("Initial memo");
+        //println!("Inserted operator into memo");
         //println!("memo: {:#?}", self.memo.read().await);
         
-        //TODO alterar aqui para carregar da base de dados o memo, ver ainda melhor o que sao as properties
 
 
-        let fut = self.find_best_costed_expr_for(group_id, required);
-        let rx = fut.await;
+        let rx = if persistent_layer {
+            self.find_best_costed_expr_for_no_exploration(group_id, required.clone())
+                .await
+        } else {
+            self.find_best_costed_expr_for(group_id, required.clone())
+                .await
+        };
+
         let best_root = {
-            rx.borrow()
+            let state = rx.borrow();
+            println!("DEBUG: optimization state - status: {:?}, costed_exprs count: {}", state.status, state.costed_exprs.len());
+            state
                 .costed_exprs
                 .iter()
                 .min_by(|x, y| x.total_cost.as_f64().total_cmp(&y.total_cost.as_f64()))
                 .cloned()
-        }?;
- 
+        };
+        
+        if best_root.is_none() {
+            println!("ERROR: best_root is None for group_id: {}", group_id);
+            return None;
+        }
+        let best_root = best_root.unwrap();
+        println!("Found best costed expression");
         let properties = {
             let reader = self.memo.read().await;
             reader
@@ -74,17 +98,40 @@ impl Cascades {
                 .properties
                 .clone()
         };
+        println!("Extracting best group expression");
+        let best_plan = if persistent_layer {
+            self.extract_best_group_expr(&best_root, group_id, properties)
+                .await?
+        } else {
+            self.extract_best_group_expr(&best_root, group_id, properties)
+                .await?
+        };
 
-        let best_plan = self
-            .extract_best_group_expr(&best_root, group_id, properties)
-            .await?;
+
 
         // DEBUG: print MEMO  
         // info!("optimized plan: {:#?}", best_plan);
-        //println!("Final memo");
-        // println!("memo: {:#?}", self.memo.read().await);
-        // println!("Sql Insert Statements to persist the memo:");
-        self.memo.read().await.dump_to_db();
+        println!("Final memo");
+        println!("memo: {:#?}", self.memo.read().await);
+
+        
+        
+        println!("Sql Insert Statements to persist the memo:");        
+        let statements = self.memo.read().await.dump_to_db();
+        for (stmt, values) in statements.into_iter() {
+            if values.is_empty() {
+                continue;
+            }
+
+            let formatted_values = values
+                .iter()
+                .map(|value_tuple| format!("  {value_tuple}"))
+                .join(",\n");
+
+            println!("{stmt} VALUES\n{formatted_values};");
+        }
+
+
         //print!("optimized plan: {:#?}", best_plan);
         Some(best_plan)
     }
@@ -143,6 +190,8 @@ impl Cascades {
         })
     }
 
+
+
     async fn insert_new_operator(self: &Arc<Self>, plan: &Arc<Operator>) -> GroupId {
         let mut writer = self.memo.write().await;
         writer
@@ -153,12 +202,13 @@ impl Cascades {
 
 // Optimization.
 impl Cascades {
-    async fn find_best_costed_expr_for(
+    async fn  find_best_costed_expr_for(
         self: &Arc<Self>,
         group_id: GroupId,
         required: Arc<Required>,
     ) -> watch::Receiver<Optimization> {
         let cascades = self.clone();
+    
         let mut rx = cascades
             .spawn_optimize_group(group_id, required.clone())
             .await;
@@ -168,7 +218,7 @@ impl Cascades {
                 let res = rx.wait_for(|state| state.status == Status::Complete).await;
                 if res.is_ok() {
                     break;
-                }
+                } 
             }
             rx = self
                 .clone()
@@ -177,6 +227,34 @@ impl Cascades {
         }
         rx
     }
+
+    async fn find_best_costed_expr_for_no_exploration(
+        self: &Arc<Self>,
+        group_id: GroupId,
+        required: Arc<Required>,
+    ) -> watch::Receiver<Optimization> {
+        let cascades = self.clone();
+    
+        let mut rx = cascades
+            .spawn_optimize_group_no_exploration(group_id, required.clone())
+            .await;
+
+        loop {
+            {
+                let res = rx.wait_for(|state| state.status == Status::Complete).await;
+                if res.is_ok() {
+                    println!("DEBUG find_best_costed_expr_for_no_exploration: group_id={group_id}");
+                    break;
+                } 
+            }
+            rx = self
+                .clone()
+                .spawn_optimize_group_no_exploration(group_id, required.clone())
+                .await;
+        }
+        rx
+    }
+
 
     #[instrument(name = "enforce", skip_all)]
     async fn explore_enforcers(
@@ -239,6 +317,43 @@ impl Cascades {
         }
     }
 
+    // clippy: the compiler cannot derive `Send` bounds when using `async fn`. (alternative: pinbox.)
+    #[allow(clippy::manual_async_fn)]
+    fn spawn_optimize_group_no_exploration(
+        self: Arc<Self>,
+        group_id: GroupId,
+        required: Arc<Required>,
+    ) -> impl Future<Output = watch::Receiver<Optimization>> + Send {
+        async move {
+            let (tx, not_started) = {
+                let mut writer = self.memo.write().await;
+                let group = writer.get_memo_group_mut(&group_id);
+                let tx = group
+                    .optimizations
+                    .entry(required.clone())
+                    .or_insert(watch::Sender::default())
+                    .clone();
+                drop(writer);
+                let not_started = tx.send_if_modified(|state| {
+                    let not_started = state.status == Status::NotStarted;
+                    not_started.then(|| state.status = Status::InProgress);
+                    not_started
+                });
+                (tx, not_started)
+            };
+            let rx = tx.subscribe();
+            if not_started {
+                let required = required.clone();
+                tokio::spawn(
+                    async move { Box::pin(self.optimize_group_no_exploration(group_id, required, tx)).await },
+                );
+            }
+            rx
+        }
+    }
+
+
+
     #[instrument(parent = None, skip(self, required, tx), fields(required = %required))]
     async fn optimize_group(
         self: Arc<Self>,
@@ -287,6 +402,73 @@ impl Cascades {
         });
         info!("optimized");
     }
+
+    #[instrument(parent = None, skip(self, required, tx), fields(required = %required))]
+    async fn optimize_group_no_exploration(
+        self: Arc<Self>,
+        group_id: GroupId,
+        required: Arc<Required>,
+        tx: watch::Sender<Optimization>,
+    ) {
+        //let mut rx = self.clone().spawn_explore_group(group_id).await;  no need to explore the group
+        //self.explore_enforcers(group_id, &required, &properties).await; penso que este passo já é presistido
+       let (properties, exprs, status) = {
+            let reader = self.memo.read().await;
+            let group = reader.get_memo_group(&group_id);
+            let exploration = group.exploration.borrow();
+            (
+                exploration.properties.clone(),
+                exploration.exprs.clone(),
+                exploration.status,
+            )
+        }; // reader + exploration drop aqui
+
+        println!("optimize_group_no_exploration: group_id={group_id}, required={required}, exprs_count={}, status={status:?}", exprs.len());
+        let mut index = 0;
+        loop {
+            println!("DEBUG optimize_group_no_exploration LOOP: index={}, total_exprs={}", index, exprs.len());
+            let next_expr: WithId<Arc<MemoGroupExpr>> = {
+                if (status != Status::Complete) && index >= exprs.len()
+                {
+                    println!("DEBUG: Breaking - status not complete and index >= exprs.len()");
+                    break;
+                }
+
+                let Some(next_expr) = exprs.get(index).cloned() else {
+                    println!("DEBUG: Breaking - no expr at index");
+                    break;
+                };
+                next_expr
+            };
+
+            println!("DEBUG: About to call optimize_expr_no_exploration for index {}", index);
+            if let Some(costed) = self
+                .optimize_expr_no_exploration(group_id, &required, next_expr, &properties)
+                .await
+            {
+                println!("DEBUG: Got costed - pushing to tx");
+                tx.send_if_modified(|x| {
+                    x.costed_exprs.push(costed);
+                    false
+                });
+            } else {
+                println!("DEBUG: optimize_expr_no_exploration returned None for index {}", index);
+            }
+            index += 1;
+        }
+
+        println!("DEBUG: Exited loop, about to mark Complete for group_id {group_id}");
+
+        tx.send_if_modified(|state| {
+            let in_progress: bool = state.status == Status::InProgress;
+            if in_progress {
+                state.status = Status::Complete;
+            }
+            in_progress
+        });
+        info!("optimized");
+    }
+
 
     #[instrument(name = "expr", skip_all, fields(id = %expr.id()))]
     async fn optimize_expr(
@@ -362,6 +544,95 @@ impl Cascades {
             best_inputs.into(),
         ))
     }
+
+
+    #[instrument(name = "expr", skip_all, fields(id = %expr.id()))]
+    async fn optimize_expr_no_exploration(
+        self: &Arc<Self>,
+        group_id: GroupId,
+        required: &Arc<Required>,
+        expr: WithId<Arc<MemoGroupExpr>>,
+        properties: &Arc<OperatorProperties>,
+    ) -> Option<CostedExpr> {
+        println!("DEBUG optimize_expr_no_exploration START: expr_id={}, group_id={group_id}", expr.id());
+        
+        let operator = {
+            let reader = self.memo.read().await;
+            reader.get_operator_one_level(expr.key(), properties.clone(), group_id)
+        };
+
+        // TODO(yuchen): Properly add this as a rule:
+        if let Ok(logical_order_by) = operator.try_borrow::<LogicalOrderBy>()
+            && let Ok(tuple_ordering) = logical_order_by.try_extract_tuple_ordering()
+        {
+            println!("DEBUG: Found LogicalOrderBy, delegating to find_best_costed_expr_for");
+            let input_group_id = expr.key().input_operators()[0];
+            let rx = self
+                .clone()
+                .find_best_costed_expr_for(input_group_id, Arc::new(Required { tuple_ordering }))
+                .await;
+            let state = rx.borrow();
+            let costed_expr = state
+                .costed_exprs
+                .iter()
+                .min_by(|x, y| x.total_cost.as_f64().total_cmp(&y.total_cost.as_f64()))
+                .cloned();
+            println!("DEBUG: LogicalOrderBy result: costed_expr={}", costed_expr.is_some());
+            return costed_expr;
+        }
+
+        let op_cost = self.ctx.cm.compute_operator_cost(&operator, &self.ctx)?;
+        println!("DEBUG: Got op_cost = {op_cost}");
+
+        let inputs_required = operator.try_satisfy(required, &self.ctx)?;
+        println!("DEBUG: Got inputs_required, count={}", inputs_required.len());
+
+        let mut best_inputs = Vec::with_capacity(operator.input_operators().len());
+        let mut best_input_costs = Vec::with_capacity(operator.input_operators().len());
+        for (input_group_id, input_required) in expr
+            .key()
+            .input_operators()
+            .iter()
+            .zip(inputs_required.iter())
+        {
+            if input_group_id.eq(&group_id) && input_required == required {
+                println!("DEBUG: Self-optimization detected, returning None");
+                trace!("self optimization avoided");
+                return None;
+            }
+
+            println!("DEBUG: Finding best costed for input group_id={input_group_id}");
+            let rx = self
+                .clone()
+                .find_best_costed_expr_for_no_exploration(*input_group_id, input_required.clone())
+                .await;
+            let state = rx.borrow();
+            println!("DEBUG: Input group costed_exprs count: {}", state.costed_exprs.len());
+            let (index, costed_expr) = state
+                .costed_exprs
+                .iter()
+                .enumerate()
+                .min_by(|(_, x), (_, y)| x.total_cost.as_f64().total_cmp(&y.total_cost.as_f64()))?;
+            println!("DEBUG: Got best input costed_expr at index {index}");
+            best_inputs.push((input_required.clone(), index));
+            best_input_costs.push(costed_expr.total_cost);
+        }
+
+        let total_cost =
+            self.ctx
+                .cm
+                .compute_total_with_input_costs(&operator, &best_input_costs, &self.ctx)?;
+        println!("DEBUG: Total cost = {total_cost}");
+        info!(%op_cost, %total_cost, "optimized");
+        Some(CostedExpr::new(
+            expr,
+            op_cost,
+            total_cost,
+            best_inputs.into(),
+        ))
+    }
+    //TODO testar com presistencia
+    
 }
 
 // Exploration.
@@ -393,7 +664,7 @@ impl Cascades {
             let (tx, not_started) = {
                 let reader = self.memo.read().await;
                 let tx = &reader.get_memo_group(&group_id).exploration.clone();
-                let not_started = tx.send_if_modified(|state| {
+                let not_started: bool = tx.send_if_modified(|state| {
                     let not_started = state.status == Status::NotStarted;
                     not_started.then(|| state.status = Status::InProgress);
                     not_started

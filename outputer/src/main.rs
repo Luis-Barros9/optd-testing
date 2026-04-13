@@ -2,7 +2,7 @@ use std::fs;
 use std::collections::HashMap;
 use anyhow::{bail, Result};
 use clap::Parser;
-use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
+use datafusion::arrow::{array::RecordBatch, util::display::{ArrayFormatter, FormatOptions}};
 use optd_datafusion::DataFusionDB;
 
 #[derive(Parser)]
@@ -25,23 +25,27 @@ struct Cli {
     #[arg(short = 'p', long, value_name = "FILE", num_args = 1..)]
     populate: Vec<String>,
 
+    /// Ativar modo de persistência do memo
+    #[arg(short = 'm', long, default_value_t = false)]
+    memo_presist: bool,
+
     
 }
 
 
-pub async fn get_memo_from_db(db: &DataFusionDB) -> Result<HashMap<String, Vec<Vec<String>>>> {
+pub async fn get_memo_from_db(db: &DataFusionDB) -> Result<HashMap<String, Vec<RecordBatch>>> {
     // possivelmente alterar para não usar strings e usar o record batch
     let statements = [
-        ("group", "SELECT * FROM group"),
+        ("group", "SELECT * FROM group "),
         ("expression", "SELECT * FROM expression"),
         ("expression_input", "SELECT * FROM expression_input"),
-        ("scalar", "SELECT * FROM scalar"),
+        ("scalar", "SELECT * FROM scalar ORDER BY id DESC"),
         ("expression_scalar", "SELECT * FROM expression_scalar"),
     ];
 
-    let mut memo_rows = HashMap::new();
+    let mut memo_rows  = HashMap::new();
     for (table_name, statement) in statements {
-        let rows = execute(db, statement).await?;
+        let rows = db.execute(statement).await?;
         memo_rows.insert(table_name.to_string(), rows);
     }
 
@@ -187,14 +191,11 @@ async fn main() -> Result<()> {
 
     // TODO : remover, apenas para debug
     
-    
-    let res = get_memo_from_db(&db).await?;
-    for (table_name, rows) in res {
-        println!("--- {} ---", table_name);
-        for row in rows {
-            // test only
-            println!("{}", row.join(" "));
-        }
+    if cli.memo_presist {
+        println!("Preloading memo from DB...");
+        let memo_rows = get_memo_from_db(&db).await?;
+        db.set_memo_preload_rows(memo_rows);
+        db.set_persistent_memo(true);
     }
 
 
@@ -205,6 +206,7 @@ async fn main() -> Result<()> {
             format!("EXPLAIN VERBOSE {}", sql_query)
         };
 
+        println!("Executing query");
         let result = execute(&db, &explained_sql).await?;
         let explained_output = result
             .into_iter()

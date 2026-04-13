@@ -61,8 +61,7 @@ use snafu::{OptionExt, ResultExt};
 use tracing::{info, warn};
 
 use crate::{
-    OptdExtensionConfig,
-    value::{from_optd_value, try_into_optd_value},
+    OptdExtensionConfig, extension::{take_memo_preload_rows, use_persistent_memo}, value::{from_optd_value, try_into_optd_value}
 };
 
 const DEFAULT_ROW_COUNT: usize = 1000;
@@ -88,6 +87,7 @@ fn tuple_err<T, R>(
         (Err(e), Err(_)) => Err(e),
     }
 }
+
 
 /// Extract value from Precision, returning default if Absent.
 fn precision_value_or<T: Copy + PartialOrd + Eq + std::fmt::Debug>(
@@ -1534,7 +1534,19 @@ impl OptdQueryPlanner {
             .add_rule(rules::LogicalJoinInnerAssocRule::new())
             .build();
         let opt = Arc::new(Cascades::new(ctx, rule_set));
-        let Some(optd_physical) = opt.optimize(&optd_logical, Arc::default()).await else {
+
+        let mut presistent_layer =false;
+        if use_persistent_memo() {
+            if let Some(memo_rows) = take_memo_preload_rows() {
+                info!("applying memo preload before optimize");
+                opt.load_memo_from_db(memo_rows).await;
+                info!("memo preload applied before optimize");
+                presistent_layer = true;
+            }
+        }
+
+        //
+        let Some(optd_physical) = opt.optimize(&optd_logical, Arc::default(),presistent_layer).await else {
             {
                 opt.memo.read().await.dump();
             }

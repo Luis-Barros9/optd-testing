@@ -1,8 +1,6 @@
 
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
-    fmt::Debug,
-    sync::{Arc, atomic::AtomicI64},
+    collections::{BTreeMap, HashMap, VecDeque}, fmt::Debug, hash::Hash, sync::{Arc, OnceLock, atomic::AtomicI64}
 };
 
 
@@ -13,13 +11,13 @@ use tracing::{info, instrument, trace};
 
 use crate::{
     ir::{
-        Group, GroupId, IRCommon, IRContext, Operator, OperatorKind, Scalar,
-        convert::IntoOperator,
-        cost::Cost,
-        explain::{Explain, ExplainOption},
-        properties::{Cardinality, GetProperty, OperatorProperties, OutputColumns, Required},
+        Column, ColumnSet, Group, GroupId, IRCommon, IRContext, Operator, OperatorKind, Scalar, convert::IntoOperator, cost::Cost, explain::{Explain, ExplainOption}, properties::{Cardinality, GetProperty, OperatorProperties, OutputColumns, Required}
     },
     utility::union_find::UnionFind,
+};
+
+use datafusion::arrow::array::{
+    Array, BooleanArray, Float32Array, Int32Array, RecordBatch, StringArray, StringViewArray,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -207,55 +205,643 @@ impl MemoTable {
         }
     }
 
-    pub fn load_from_db(&mut self){
-        //TODO load the memo from the database, see memo.sql for the schema
-        // make sure the structures are empty before loading
-        
-
+    
+    pub fn clear_memo(&mut self) {
+        self.scalar_dedup.clear();
+        self.scalar_id_to_key.clear();
+        self.operator_dedup.clear();
+        self.id_to_group_ids = Default::default();
+        self.groups.clear();
+        self.id_allocator = Default::default(); // NOTE: LATER TRY WITHOUT RESTARTING ID ALLOCATOR
     }
 
-    pub fn dump_to_db(&self){
+    pub fn load_from_db(&mut self, db_rows: HashMap<String, Vec<RecordBatch>>){
+        //TODO load the memo from the database, see memo.sql for the schema
+        // make sure the structures are empty before loading
+
+        
+
+        fn parse_float(
+            batch: &RecordBatch,
+            row: usize,
+            column: &str,
+        ) -> Result<Option<f32>, String> {
+            let col = batch
+                .column_by_name(column)
+                .ok_or_else(|| format!("missing '{}' column", column))?
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| format!("column '{}' is not Float32", column))?;
+
+            if col.is_null(row) {
+                return Ok(None);
+            }
+
+            Ok(Some(col.value(row)))
+        }
+
+        fn parse_int(
+            batch: &RecordBatch,
+            row: usize,
+            column: &str,
+        ) -> Result<GroupId, String> {
+            let col = batch
+                .column_by_name(column)
+                .ok_or_else(|| format!("missing '{}' column", column))?
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .ok_or_else(|| format!("column '{}' is not Int32", column))?;
+
+            if col.is_null(row) {
+                return Err(format!("column '{}' is NULL at row {}", column, row));
+            }
+
+            Ok(GroupId(i64::from(col.value(row))))
+        }
+
+        fn parse_kind(batch: &RecordBatch, row: usize, column: &str) -> Result<String, String> {
+            let arr = batch
+                .column_by_name(column)
+                .ok_or_else(|| format!("missing '{}' column", column))?;
+
+            if let Some(col) = arr.as_any().downcast_ref::<StringViewArray>() {
+                if col.is_null(row) {
+                    return Err(format!("column '{}' is NULL at row {}", column, row));
+                }
+                return Ok(col.value(row).to_string());
+            }
+
+            if let Some(col) = arr.as_any().downcast_ref::<StringArray>() {
+                if col.is_null(row) {
+                    return Err(format!("column '{}' is NULL at row {}", column, row));
+                }
+                return Ok(col.value(row).to_string());
+            }
+
+            Err(format!("column '{}' is not Utf8/Utf8View", column))
+        }
+
+        fn parse_nullablemetadata(
+            batch: &RecordBatch,
+            row: usize,
+            column: &str,
+        ) -> Result<Option<String>, String> {
+            let arr = batch
+                .column_by_name(column)
+                .ok_or_else(|| format!("missing '{}' column", column))?;
+
+            if let Some(col) = arr.as_any().downcast_ref::<StringViewArray>() {
+                if col.is_null(row) {
+                    return Ok(None);
+                }
+                return Ok(Some(col.value(row).to_string()));
+            }
+
+            if let Some(col) = arr.as_any().downcast_ref::<StringArray>() {
+                if col.is_null(row) {
+                    return Ok(None);
+                }
+                return Ok(Some(col.value(row).to_string()));
+            }
+
+            Err(format!("column '{}' is not Utf8/Utf8View", column))
+        }
+
+
+        println!("Loading memo from database...");
+        self.clear_memo();
+
+
+        let mut scalars_inputs: HashMap<GroupId, Vec<(i32, Scalar)>> = HashMap::new(); // scalar -> (position, input_scalar)
+        // estrutura que faça mapping dos ids da bd, para ids no memo
+        //let id_mapping: HashMap<GroupId, GroupId> = HashMap::new();
+        let mut referenced_scalars: HashMap<GroupId, Arc<Scalar>> = HashMap::new(); // key -> id usado na bd
+        let mut groups_by_id: HashMap<GroupId, MemoGroup> = HashMap::new();
+        let mut expressions_per_group: HashMap<GroupId, Vec<WithId<Arc<MemoGroupExpr>>>> = HashMap::new(); // group_id -> list of expressions
+        let mut expression_inputs_by_expr: HashMap<GroupId, Vec<(i32, GroupId)>> = HashMap::new();
+        let mut expression_scalars_by_expr: HashMap<GroupId, Vec<(i32, GroupId)>> = HashMap::new();
+        for batch in db_rows.get("scalar").unwrap_or(&vec![]) {
+            for row in 0..batch.num_rows() {
+                // TODO rever
+                let scalar_id = match parse_int(batch, row, "id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let kind_name = match parse_kind(batch, row, "kind") {
+                    Ok(kind) => kind,
+                    Err(err) => {
+                        trace!("Skipping scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                    Ok(value) => value,
+                    Err(err) => {
+                        trace!("Skipping scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let metadata_str = metadata.as_deref().unwrap_or("");
+
+                let referenced = {
+                    let Some(col) = batch
+                        .column_by_name("referenced")
+                        .and_then(|c| c.as_any().downcast_ref::<BooleanArray>())
+                    else {
+                        trace!("Skipping scalar row {}: missing/invalid 'referenced' Boolean column", row);
+                        continue;
+                    };
+                    !col.is_null(row) && col.value(row)
+                };
+
+                let parent_scalar = {
+                    let Some(col) = batch
+                        .column_by_name("parent_scalar")
+                        .and_then(|c| c.as_any().downcast_ref::<Int32Array>())
+                    else {
+                        trace!("Skipping scalar row {}: missing/invalid 'parent_scalar' Int32 column", row);
+                        continue;
+                    };
+
+                    if col.is_null(row) {
+                        None
+                    } else {
+                        Some(GroupId(i64::from(col.value(row))))
+                    }
+                };
+
+                let scalar_position = {
+                    let Some(col) = batch
+                        .column_by_name("position")
+                        .and_then(|c| c.as_any().downcast_ref::<Int32Array>())
+                    else {
+                        trace!("Skipping scalar row {}: missing/invalid 'position' Int32 column", row);
+                        continue;
+                    };
+
+                    if col.is_null(row) {
+                        None
+                    } else {
+                        Some(col.value(row))
+                    }
+                };
+
+                let Some(parsed_kind) = crate::ir::scalar::ScalarKind::from_kind_and_metadata_string(&kind_name, metadata_str) else {
+                    trace!(
+                        "Skipping scalar row: could not parse ScalarKind from kind='{}' metadata='{}'",
+                        kind_name,
+                        metadata_str
+                    );
+                    continue;
+                };
+
+
+                if kind_name == "Literal"
+                {
+                    println!("literal scalar id={} had metadata '{}'", scalar_id.0, metadata_str);
+                    println!("parsed_kind: {:?}", parsed_kind);
+                }
+
+
+                let mut common = IRCommon::empty();
+                
+                if scalars_inputs.contains_key(&scalar_id){
+                    let mut ordered_inputs = scalars_inputs.get(&scalar_id).unwrap().clone();
+                    ordered_inputs.sort_by_key(|(position, _)| *position);
+                    common = IRCommon::with_input_scalars_only(
+                        ordered_inputs
+                            .into_iter()
+                            .map(|(_, scalar)| Arc::new(scalar))
+                            .collect()
+                    );
+                }
+
+                let scalar = Arc::new(Scalar {
+                    kind: parsed_kind,
+                    common: common
+                });
+
+                if referenced {
+                    referenced_scalars.insert(scalar_id, scalar);
+                }
+                else
+                {
+                    let parent = parent_scalar.unwrap_or(GroupId(0));
+                    let position = scalar_position.unwrap_or(0);
+
+                    if scalars_inputs.contains_key(&parent) {
+                        scalars_inputs
+                            .get_mut(&parent)
+                            .unwrap()
+                            .push((position, (*scalar).clone()));
+                    }
+                    else {
+                        scalars_inputs.insert(parent, vec![(position, (*scalar).clone())]);
+                    }
+                }
+                
+                trace!(
+                    "parsed scalar row id={} referenced={} kind={} metadata={}",
+                    scalar_id.0,
+                    referenced,
+                    kind_name,
+                    metadata_str
+                );
+            }
+        }
+        // é suposto termos uma estrutura que suporta cada um dos scalars
+
+
+        // Parse expression_input table
+        for batch in db_rows.get("expression_input").unwrap_or(&vec![]) {
+            for row in 0..batch.num_rows() {
+                // TODO rever
+                let _expr_id = match parse_int(batch, row, "expression_id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression_input row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let _input_group = match parse_int(batch, row, "input_group") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression_input row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let _position = match parse_int(batch, row, "position") {
+                    Ok(pos) => pos.0 as i32,
+                    Err(err) => {
+                        trace!("Skipping expression_input row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                expression_inputs_by_expr
+                    .entry(_expr_id)
+                    .or_default()
+                    .push((_position, _input_group));
+
+                trace!("parsed expression_input row expr_id={} input_group={} position={}", _expr_id.0, _input_group.0, _position);
+                //TODO: insert into memo structures
+            }
+        }
+
+        // Parse expression_scalar table
+        for batch in db_rows.get("expression_scalar").unwrap_or(&vec![]) {
+            for row in 0..batch.num_rows() {
+                // TODO rever
+                let _expr_id = match parse_int(batch, row, "expression_id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression_scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let _scalar_id = match parse_int(batch, row, "scalar_id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression_scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let _position = match parse_int(batch, row, "position") {
+                    Ok(pos) => pos.0 as i32,
+                    Err(err) => {
+                        trace!("Skipping expression_scalar row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                expression_scalars_by_expr
+                    .entry(_expr_id)
+                    .or_default()
+                    .push((_position, _scalar_id));
+
+                trace!("parsed expression_scalar row expr_id={} scalar_id={} position={}", _expr_id.0, _scalar_id.0, _position);
+                //TODO: insert into memo structures
+            }
+        }
+
+
+        let make_expression = |metadata: Option<&str>, kind: &str, id: GroupId| -> Option<MemoGroupExpr> {
+            let metadata_str = metadata.unwrap_or("");
+            let op_kind = OperatorKind::from_kind_and_metadata_string(kind, metadata_str)?;
+
+            let mut input_scalars = expression_scalars_by_expr
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
+            let mut input_groups = expression_inputs_by_expr
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
+
+            // Keep operator inputs ordered by their DB position.
+            input_groups.sort_by_key(|(position, _)| *position);
+            input_scalars.sort_by_key(|(position, _)| *position);
+
+            let split = input_groups.len();
+            let inputs = input_groups
+                .iter()
+                .map(|(_, input_group)| *input_group)
+                .chain(input_scalars.iter().map(|(_, scalar_id)| *scalar_id))
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+
+            Some(MemoGroupExpr::new(op_kind, inputs, split))
+        };
+
+        // Parse expression table
+        for batch in db_rows.get("expression").unwrap_or(&vec![]) {
+            for row in 0..batch.num_rows() {
+                // TODO rever
+                let expr_id = match parse_int(batch, row, "id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let group_id = match parse_int(batch, row, "group_id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping expression row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let kind = match parse_kind(batch, row, "kind") {
+                    Ok(k) => k,
+                    Err(err) => {
+                        trace!("Skipping expression row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                    Ok(m) => m,
+                    Err(err) => {
+                        trace!("Skipping expression row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let _cost = match parse_float(batch, row, "cost") {
+                    Ok(c) => c,
+                    Err(err) => {
+                        trace!("Skipping expression row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let expr = match make_expression(metadata.as_deref(), &kind, expr_id) {
+                    Some(expr) => Arc::new(expr),
+                    None => {
+                        trace!(
+                            "Skipping expression row {}: could not build expression from kind='{}' metadata='{}'",
+                            row,
+                            kind,
+                            metadata.as_deref().unwrap_or("")
+                        );
+                        continue;
+                    }
+                };
+
+                expressions_per_group
+                    .entry(group_id)
+                    .or_default()
+                    .push(WithId::new(Id::from(expr_id), expr));
+
+                trace!("parsed expression row id={} group_id={} kind={}", expr_id.0, group_id.0, kind);
+                //TODO: insert into memo structures
+            }
+        }
+
+
+        // Parse group table
+        for batch in db_rows.get("group").unwrap_or(&vec![]) {
+            for row in 0..batch.num_rows() {
+                // TODO rever
+                let group_id = match parse_int(batch, row, "id") {
+                    Ok(id) => id,
+                    Err(err) => {
+                        trace!("Skipping group row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let kind = match parse_kind(batch, row, "kind") {
+                    Ok(k) => k,
+                    Err(err) => {
+                        trace!("Skipping group row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                    Ok(m) => m,
+                    Err(err) => {
+                        trace!("Skipping group row {}: {}", row, err);
+                        continue;
+                    }
+                };
+
+                let cardinality = match parse_float(batch, row, "cardinality") {
+                    Ok(c) => c,
+                    Err(err) => {
+                        trace!("Skipping group row {}: {}", row, err);
+                        continue;
+                    }
+                };
+                let columns = match parse_nullablemetadata(batch, row, "columns") {
+                    Ok(m) => m,
+                    Err(err) => {
+                        trace!("Skipping group row {}: {}", row, err);
+                        continue;
+                    }
+                    };
+                
+                
+                let expression = match make_expression(metadata.as_deref(), &kind, group_id) {
+                    Some(expr) => expr,
+                    None => {
+                        trace!(
+                            "Skipping group row {}: could not build expression from kind='{}' metadata='{}'",
+                            row,
+                            kind,
+                            metadata.as_deref().unwrap_or("")
+                        );
+                        continue;
+                    }
+                };
+
+                let first_expr = WithId::new(Id::from(group_id), Arc::new(expression));
+
+                let card: OnceLock<Cardinality> = OnceLock::new();
+                card.get_or_init(|| Cardinality::new(cardinality.unwrap_or(0.0).into()));
+
+                let output_cols = OnceLock::new();
+                output_cols.get_or_init(|| {
+                    Arc::new(ColumnSet::from_iter(
+                        columns
+                            .unwrap_or("".into())
+                            .split(',')
+                            .filter(|s| !s.trim().is_empty())
+                            .map(|s| {
+                                let idx = s.trim().parse::<usize>().expect("invalid column index");
+                                Column(idx)
+                            }),
+                    ))
+                });
+
+                let properties = Arc::new(
+                    OperatorProperties {
+                        cardinality: card,
+                        output_columns: output_cols
+                    }
+                );
+                
+                let group = MemoGroup::new(first_expr, properties);
+
+                let other_exprs: Vec<WithId<Arc<MemoGroupExpr>>> = expressions_per_group
+                    .get(&group_id)
+                    .map(|exprs| exprs.to_vec())
+                    .unwrap_or_else(Vec::new);
+                group.exploration.send_modify(|state| {
+                    state.status = Status::Complete; // TODO make sure it doesnt broke optimization pha
+                    state.exprs.extend(other_exprs.iter().cloned());
+
+                });
+                
+
+
+
+                groups_by_id.insert(group_id, group);
+                trace!("parsed group row id={} kind={}", group_id.0, kind);
+                //TODO: insert into memo structures
+            }
+        }   
+
+    
+        
+
+        // populate main structure
+        // 1) Materialize groups staged from DB
+        self.groups = groups_by_id.into_iter().collect::<BTreeMap<_, _>>();
+
+        // 2) Rebuild operator dedup + union-find + scalar maps
+        let mut max_used_id: i64 = 0;
+
+        for group_id in self.groups.keys() {
+            max_used_id = max_used_id.max(group_id.0);
+            self.id_to_group_ids.merge(group_id, group_id);
+        }
+
+        for group in self.groups.values() {
+            let exploration = group.exploration.borrow();
+            for expr in &exploration.exprs {
+                self.operator_dedup.insert(expr.key().clone(), expr.id());
+                max_used_id = max_used_id.max(expr.id().0);
+            }
+        }
+
+        // Keep only referenced scalars, as requested.
+        for (scalar_id, scalar) in referenced_scalars {
+            max_used_id = max_used_id.max(scalar_id.0);
+            self.scalar_dedup.insert(scalar.clone(), scalar_id);
+            self.scalar_id_to_key.insert(scalar_id, scalar);
+        }
+
+        // 3) Ensure new ids continue after the largest id loaded from DB.
+        let next_id = (max_used_id + 1).max(1);
+        self.id_allocator
+            .next_id
+            .store(next_id, std::sync::atomic::Ordering::Relaxed);
+
+        println!("Memo after loading from database:");
+        println!("{:?}", self);
+        println!("Finished loading memo from database.");
+    }
+
+    pub fn dump_to_db(&self) -> HashMap<String, Vec<String>> {
         //TODO dump the memo to the database, see memo.sql for the schema
         // let timestamp = SystemTime::now(); for now use default
+        let mut db_statements: HashMap<String, Vec<String>> = HashMap::new();
+        
+
+
         for (scalar_id, scalar) in &self.scalar_id_to_key {
             let kind = scalar.kind.get_kind_string();
             let metadata = scalar.kind.get_metadata_string();
             if metadata.is_empty() {
-                println!("insert into scalar (id, kind, referenced) values ({}, '{}', true);", scalar_id.0, kind);
+                db_statements
+                    .entry("insert into scalar (id, kind, referenced)".into())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, '{}', true)", scalar_id.0, kind));
             } else {
-                println!("insert into scalar (id, kind, metadata, referenced) values ({}, '{}', '{}', true);", scalar_id.0, kind, metadata);
+                db_statements
+                    .entry("insert into scalar (id, kind, metadata, referenced)".into())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, '{}', '{}', true)", scalar_id.0, kind, metadata));
             }
-            //println!("insert into scalar (id, kind, referenced) values ({}, '{:?}', true);", scalar_id.0, &scalar.kind);
             // TODO: loop through the input_scalars of each scalar recursively and insert into scalar adding a reference to the parent
-            let mut queue: VecDeque<(Arc<Scalar>, GroupId)> = scalar
+            let mut queue: VecDeque<(Arc<Scalar>, GroupId, i32)> = scalar
                 .input_scalars()
                 .iter()
                 .cloned()
-                .map(|s| (s, *scalar_id))
+                .enumerate()
+                .map(|(position, s)| (s, *scalar_id, position as i32))
                 .collect();
 
-            while let Some((scalar, parent_id)) = queue.pop_front() {
+            while let Some((scalar, parent_id, position)) = queue.pop_front() {
                 let id = GroupId::from(self.id_allocator.next_id());
                 let kind = scalar.kind.get_kind_string();
                 let metadata = scalar.kind.get_metadata_string();
                 if metadata.is_empty() {
-                    println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{}', false, {});", id.0, kind, parent_id.0);
+                    db_statements
+                        .entry("insert into scalar (id, kind, referenced, parent_scalar, position)".into())
+                        .or_insert_with(Vec::new)
+                        .push(format!("({}, '{}', false, {}, {})", id.0, kind, parent_id.0, position));
                 } else {
-                    println!("insert into scalar (id, kind, metadata, referenced, parent_scalar) values ({}, '{}', '{}', false, {});", id.0, kind, metadata, parent_id.0);
+                    db_statements
+                        .entry("insert into scalar (id, kind, metadata, referenced, parent_scalar, position)".into())
+                        .or_insert_with(Vec::new)
+                        .push(format!("({}, '{}', '{}', false, {}, {})", id.0, kind, metadata, parent_id.0, position));
                 }
-                //println!("insert into scalar (id, kind, referenced, parent_scalar) values ({}, '{:?}', false, {})", id.0, &scalar.kind, parent_id.0);
-                queue.extend(
+                     queue.extend(
                     scalar.
                     input_scalars().
                     iter().
                     cloned().
-                    map(|s| (s,  id)));           
+                    enumerate().
+                    map(|(child_position, s)| (s, id, child_position as i32)));           
             }
         }
 
         for (_group_id, group) in &self.groups {
-            group.dump_to_db();
+
+            let group_statements = group.dump_to_db();
+            for (stmt, mut values) in group_statements {
+                db_statements
+                    .entry(stmt)
+                    .or_insert_with(Vec::new)
+                    .append(&mut values);
+            }
         }
+        db_statements
 
     }
     /// Adds an operator to the memo table.
@@ -294,7 +880,7 @@ impl MemoTable {
         operator: Arc<Operator>,
         into_group_id: GroupId,
     ) -> Result<WithId<Arc<MemoGroupExpr>>, GroupId> {
-        let res = self.insert_operator(operator.clone());
+        let res: Result<WithId<Arc<MemoGroupExpr>>, GroupId> = self.insert_operator(operator.clone());
         let into_group_id = self.id_to_group_ids.find(&into_group_id);
         res.inspect(|expr| {
             info!(id = %expr.id(), "obtain new expr");
@@ -598,7 +1184,7 @@ impl MemoTable {
             info!("\n[operators.{group_id}]");
             info!("num_exprs = {}", state.exprs.len());
             info!(
-                "output_columns = {}",
+                "outputcolumns = {}",
                 state
                     .properties
                     .output_columns
@@ -791,59 +1377,81 @@ pub struct MemoGroup {
 }
 
 impl MemoGroup {
-    fn dump_to_db(&self){
-            let exploration = self.exploration.borrow();
-            if let Some(first_expr) = exploration.exprs.first() {
-                let card = exploration.properties.cardinality.get().map(|c| c.as_f64()).unwrap_or(-1.0);
-                let columns = exploration
-                    .properties
-                    .output_columns
-                    .get()
-                    .map(|cols| cols.iter().map(|c| c.0.to_string()).join(","))
-                    .unwrap_or("?".to_string());
-                let kind = first_expr.key().kind().get_kind_string();
-                let metadata = first_expr.key().kind().get_metadata_string();
-                if metadata.is_empty() {
-                    println!(
-                        "insert into group (id,kind,cardinality,columns) values ({},'{}',{},'{}');",
-                        self.group_id.0,
-                        kind,
-                        card,
-                        columns
-                    );
-                }
-                else{
-                    println!(
-                        "insert into group (id,kind,metadata,cardinality,columns) values ({},'{}','{}',{},'{}');",
-                        self.group_id.0,
-                        kind,
-                        metadata,
-                        card,
-                        columns
-                    );
-                }
+    fn dump_to_db(&self) -> HashMap<String, Vec<String>> 
+    {
+        let mut res: HashMap<String, Vec<String>> = HashMap::new();
+        let exploration = self.exploration.borrow();
+        if let Some(first_expr) = exploration.exprs.first() {
+            let card = exploration.properties.cardinality.get().map(|c| c.as_f64()).unwrap_or(-1.0);
+            let columns = exploration
+                .properties
+                .output_columns
+                .get()
+                .map(|cols| cols.iter().map(|c| c.0.to_string()).join(","))
+                .unwrap_or("?".to_string());
+            let kind = first_expr.key().kind().get_kind_string();
+            let metadata = first_expr.key().kind().get_metadata_string();
+            if metadata.is_empty() {
+                res.entry("insert into group (id,kind,cardinality,columns)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({},'{}',{},'{}')", self.group_id.0, kind, card, columns));
+            }
+            else{
+
+                res.entry("insert into group (id,kind,metadata,cardinality,columns)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({},'{}','{}',{},'{}')", self.group_id.0, kind, metadata, card, columns));
+
+            }
+            let mut position = 0;
+            for input_group in first_expr.key.input_operators() {
+                res.entry("insert into expression_input (expression_id, input_group, position)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, {})", first_expr.id().0, input_group.0, position));
+                position += 1;
             }
 
-            for expr in exploration.exprs.iter().skip(1) {
-                let kind = expr.key().kind().get_kind_string();
-                let metadata = expr.key().kind().get_metadata_string();
-                if metadata.is_empty() {
-                    println!("insert into expression (id, group_id, kind) values ({}, {}, '{}');", expr.id().0, self.group_id.0, kind);
+            let mut position = 0;
+            for input_scalar in first_expr.key.input_scalars() {
 
-                }
-                else{
-                    println!("insert into expression (id, group_id, kind, metadata) values ({}, {}, '{}', '{}');", expr.id().0, self.group_id.0, kind, metadata);
-                    
-                }
-                let mut position = 0;
-                for input_group in expr.key.input_operators() {
-                    println!("insert into expression_input (expression_id, input_group, position) values ({}, {}, {});", expr.id().0, input_group.0, position);
-                    position += 1;
-                }
-                for input_scalar in expr.key.input_scalars() {
-                    println!("insert into expression_scalar (expression_id, scalar_id) values ({}, {});", expr.id().0, input_scalar.0);
-                }
-            }           
+                res.entry("insert into expression_scalar (expression_id, scalar_id, position)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, {})", first_expr.id().0, input_scalar.0, position));
+                position += 1;
+            }
+        }
+
+        for expr in exploration.exprs.iter().skip(1) {
+            let kind = expr.key().kind().get_kind_string();
+            let metadata = expr.key().kind().get_metadata_string();
+            if metadata.is_empty() {
+                res.entry("insert into expression (id, group_id, kind)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, '{}')", expr.id().0, self.group_id.0, kind));
+            }
+            else{
+
+                res.entry("insert into expression (id, group_id, kind, metadata)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, '{}', '{}')", expr.id().0, self.group_id.0, kind, metadata));
+            }
+            let mut position = 0;
+            for input_group in expr.key.input_operators() {
+
+                res.entry("insert into expression_input (expression_id, input_group, position)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, {})", expr.id().0, input_group.0, position));
+                position += 1;
+            }
+            position = 0;
+            for input_scalar in expr.key.input_scalars() {
+                res.entry("insert into expression_scalar (expression_id, scalar_id, position)".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(format!("({}, {}, {})", expr.id().0, input_scalar.0, position));
+                position += 1;
+            }
+        }           
+        res
     }
 }
 

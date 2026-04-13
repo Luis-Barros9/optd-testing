@@ -42,7 +42,8 @@ create table scalar (
     kind varchar(50), -- tipo de scalar, ex: List(ListMetadata) ver depois outra forma que ocupe menos espaço
     metadata varchar(255),
     referenced boolean, -- se o scalar é referenciado por alguma expressão, pode ser referenciado por um scalar apenas, provavelmente basta ver se a foreign key é null ou não
-    parent_scalar int null -- foreign key references scalar(id)
+    parent_scalar int null, -- foreign key references scalar(id)
+    position int null 
 );
 
 
@@ -53,6 +54,7 @@ create table scalar (
 create table expression_scalar (
     expression_id int, -- foreign key references expression(id),
     scalar_id int, -- foreign key references scalar(id),
+    position int,
     primary key (expression_id, scalar_id)
 );
 

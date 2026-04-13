@@ -18,6 +18,7 @@ use datafusion::prelude::SessionContext;
 use datafusion::sql::parser::DFParser;
 use datafusion::sql::sqlparser::dialect::dialect_from_str;
 pub use extension::{OptdExtension, OptdExtensionConfig};
+pub use extension::MemoRows;
 pub use planner::OptdQueryPlanner;
 pub use table::{OptdTable, OptdTableProvider};
 
@@ -67,6 +68,22 @@ impl DataFusionDB {
     pub fn session_context(&self) -> &SessionContext {
         &self.ctx
     }
+
+    pub fn set_memo_preload_rows(&self, rows: MemoRows) {
+        extension::set_memo_preload_rows(rows);
+    }
+
+
+    pub fn clear_memo_preload_rows(&self) {
+        extension::clear_memo_preload_rows();
+    }
+
+    pub fn set_persistent_memo(&self, value: bool) {
+        extension::set_persistent_memo(value);
+    }
+
+    
+
 
     pub async fn execute_one(&self, sql: &str) -> Result<Vec<RecordBatch>, DataFusionError> {
         self.execute_inner(sql, true).await

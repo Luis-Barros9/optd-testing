@@ -28,7 +28,7 @@ async fn optimize_plan(
         println!("\n MEMO BEFORE OPT");
         opt.memo.read().await.dump();
     }
-    let optimized = opt.optimize(initial_plan, required.clone()).await;
+    let optimized = opt.optimize(initial_plan, required.clone(), false).await;
     {
         println!("\nMEMO AFTER OPT");
         opt.memo.read().await.dump();

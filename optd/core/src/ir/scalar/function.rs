@@ -26,6 +26,15 @@ impl FunctionKind {
             FunctionKind::Window => "Window",
         }
     }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value.trim() {
+            "Scalar" => Some(FunctionKind::Scalar),
+            "Aggregate" => Some(FunctionKind::Aggregate),
+            "Window" => Some(FunctionKind::Window),
+            _ => None,
+        }
+    }
 }
 
 define_node!(
@@ -87,15 +96,69 @@ impl FunctionMetadata {
             });
         }
 
-        if metadata.contains("id:") && metadata.contains("kind:") && metadata.contains("return_type:") {
-            return Some(Self {
-                id: std::sync::Arc::from(""),
-                kind: FunctionKind::Scalar,
-                return_type: DataType::Null,
-            });
+        let body = metadata.strip_prefix('{')?.strip_suffix('}')?.trim();
+        let id_start = body.find("id:")? + "id:".len();
+        let kind_marker = body.find(", kind:")?;
+        let return_type_marker = body.find(", return_type:")?;
+
+        if !(id_start <= kind_marker && kind_marker < return_type_marker) {
+            return None;
         }
-        None
+
+        let id = body[id_start..kind_marker].trim();
+        let kind_str = body[(kind_marker + ", kind:".len())..return_type_marker].trim();
+        let return_type_str = body[(return_type_marker + ", return_type:".len())..].trim();
+
+        Some(Self {
+            id: Arc::from(id),
+            kind: FunctionKind::from_str(kind_str)?,
+            return_type: parse_data_type_debug(return_type_str)?,
+        })
     }
+}
+
+fn parse_data_type_debug(value: &str) -> Option<DataType> {
+    let value = value.trim();
+    match value {
+        "Null" => Some(DataType::Null),
+        "Boolean" => Some(DataType::Boolean),
+        "Int8" => Some(DataType::Int8),
+        "Int16" => Some(DataType::Int16),
+        "Int32" => Some(DataType::Int32),
+        "Int64" => Some(DataType::Int64),
+        "UInt8" => Some(DataType::UInt8),
+        "UInt16" => Some(DataType::UInt16),
+        "UInt32" => Some(DataType::UInt32),
+        "UInt64" => Some(DataType::UInt64),
+        "Utf8" => Some(DataType::Utf8),
+        "Utf8View" => Some(DataType::Utf8View),
+        "Date32" => Some(DataType::Date32),
+        "Date64" => Some(DataType::Date64),
+        _ if value.starts_with("Decimal32(") && value.ends_with(')') => {
+            let (precision, scale) = parse_decimal_params(value, "Decimal32")?;
+            Some(DataType::Decimal32(precision, scale))
+        }
+        _ if value.starts_with("Decimal64(") && value.ends_with(')') => {
+            let (precision, scale) = parse_decimal_params(value, "Decimal64")?;
+            Some(DataType::Decimal64(precision, scale))
+        }
+        _ if value.starts_with("Decimal128(") && value.ends_with(')') => {
+            let (precision, scale) = parse_decimal_params(value, "Decimal128")?;
+            Some(DataType::Decimal128(precision, scale))
+        }
+        _ => None,
+    }
+}
+
+fn parse_decimal_params(value: &str, prefix: &str) -> Option<(u8, i8)> {
+    let inner = value
+        .strip_prefix(prefix)?
+        .strip_prefix('(')?
+        .strip_suffix(')')?;
+    let (precision, scale) = inner.split_once(',')?;
+    let precision = precision.trim().parse::<u8>().ok()?;
+    let scale = scale.trim().parse::<i8>().ok()?;
+    Some((precision, scale))
 }
 
 impl Explain for FunctionBorrowed<'_> {
@@ -111,5 +174,40 @@ impl Explain for FunctionBorrowed<'_> {
             .join(", ");
 
         Pretty::Text(format!("{}({params})", self.id()).into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn function_metadata_roundtrip_aggregate_decimal128() {
+        let metadata = FunctionMetadata {
+            id: Arc::from("sum"),
+            kind: FunctionKind::Aggregate,
+            return_type: DataType::Decimal128(38, 4),
+        };
+
+        let encoded = metadata.get_metadata_string();
+        let decoded = FunctionMetadata::from_metadata_string(&encoded)
+            .expect("function metadata should parse");
+
+        assert_eq!(metadata, decoded);
+    }
+
+    #[test]
+    fn function_metadata_roundtrip_default_scalar() {
+        let metadata = FunctionMetadata {
+            id: Arc::from(""),
+            kind: FunctionKind::Scalar,
+            return_type: DataType::Null,
+        };
+
+        let encoded = metadata.get_metadata_string();
+        let decoded = FunctionMetadata::from_metadata_string(&encoded)
+            .expect("function metadata should parse");
+
+        assert_eq!(metadata, decoded);
     }
 }
