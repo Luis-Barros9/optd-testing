@@ -35,11 +35,23 @@ cargo run -p outputer -- -f .\sqlFiles\q3.example.sql   -p  .\sqlFiles\populate.
 cargo run -p outputer -- -f .\sqlFiles\q3.example.sql -m  -p  .\sqlFiles\populate.sql .\sqlFiles\memo.sql .\sqlFiles\memopopulate.sql > .\outputs\presistent.txt 
 
 
+### NOTAS
 
-#### Problemas
+já está funcional a presistência mas penso que vou ter que extender os testes para mais querys diferentes, algum scalar/operador pode não ter a conversão correta ainda
+Acrescentar um lookup do GroupId para o plano, neste momento ainda está hardcoded
+De momento tempo sem presistencia aproximadamente igual ao tempo com presistencia
 
-thread 'tokio-runtime-worker' (17284) panicked at optd\core\src\ir\properties\tuple_ordering.rs:101:9:
-assertion `left == right` failed
-  left: 0
- right: 2
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+### Passos seguintes
+
+Ver a simplificaçáo para os testes do professor, utilizar source e output columns para as colunas de output/input.
+
+
+
+
+## Proxima semana
+
+Apresentar alterações que efetuei e suas limitações
+
+Serde Json  https://docs.rs/serde_json/latest/serde_json/

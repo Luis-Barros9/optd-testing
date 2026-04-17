@@ -308,7 +308,7 @@ impl MemoTable {
         }
 
 
-        println!("Loading memo from database...");
+        //println!("Loading memo from database...");
         self.clear_memo();
 
 
@@ -400,14 +400,6 @@ impl MemoTable {
                     );
                     continue;
                 };
-
-
-                if kind_name == "Literal"
-                {
-                    println!("literal scalar id={} had metadata '{}'", scalar_id.0, metadata_str);
-                    println!("parsed_kind: {:?}", parsed_kind);
-                }
-
 
                 let mut common = IRCommon::empty();
                 
@@ -771,9 +763,11 @@ impl MemoTable {
             .next_id
             .store(next_id, std::sync::atomic::Ordering::Relaxed);
 
+        /*
         println!("Memo after loading from database:");
         println!("{:?}", self);
         println!("Finished loading memo from database.");
+        */
     }
 
     pub fn dump_to_db(&self) -> HashMap<String, Vec<String>> {

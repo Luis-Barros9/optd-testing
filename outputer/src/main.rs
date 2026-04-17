@@ -1,5 +1,6 @@
 use std::fs;
 use std::collections::HashMap;
+use std::time::Instant;
 use anyhow::{bail, Result};
 use clap::Parser;
 use datafusion::arrow::{array::RecordBatch, util::display::{ArrayFormatter, FormatOptions}};
@@ -28,6 +29,10 @@ struct Cli {
     /// Ativar modo de persistência do memo
     #[arg(short = 'm', long, default_value_t = false)]
     memo_presist: bool,
+
+    /// Modo teste: executar query N vezes (carrega dados uma única vez). Default: 1 se fornecido sem valor
+    #[arg(short = 't', long, num_args = 0..=1, default_missing_value = "1", value_parser = clap::value_parser!(u32))]
+    test: Option<u32>,
 
     
 }
@@ -193,7 +198,16 @@ async fn main() -> Result<()> {
     
     if cli.memo_presist {
         println!("Preloading memo from DB...");
-        let memo_rows = get_memo_from_db(&db).await?;
+
+        let memo_rows = if cli.test.is_some() {
+            let start = Instant::now();
+            let rows = get_memo_from_db(&db).await?;
+            println!("Tempo a ler o memo da DB: {:?}", start.elapsed());
+            rows
+        } else {
+            get_memo_from_db(&db).await?
+        };
+
         db.set_memo_preload_rows(memo_rows);
         db.set_persistent_memo(true);
     }
@@ -206,22 +220,53 @@ async fn main() -> Result<()> {
             format!("EXPLAIN VERBOSE {}", sql_query)
         };
 
-        println!("Executing query");
-        let result = execute(&db, &explained_sql).await?;
-        let explained_output = result
-            .into_iter()
-            .filter_map(|row| match row[0].as_str() {
-                "logical_plan after optd-initial"
-                | "physical_plan after optd-finalized" => Some(row[0..2].join(":\n")),
-                _ => None,
-            })
-            .join("\n\n");
-
-        writeln!(r, "{}\n", explained_output)?;
-        if sql_queries.len() > 1 {
-            println!("----- [{}] {} -----", idx + 1, source);
+        let iterations = cli.test.unwrap_or(1);
+        
+        if cli.test.is_some() {
+            println!("🧪 Modo teste: executando query {} vezes", iterations);
         }
-        println!("{}", explained_output);
+        
+        let mut total_duration = std::time::Duration::new(0, 0);
+        
+        for iteration in 1..=iterations {
+            if iterations > 1 {
+                println!("Execução {} de {}", iteration, iterations);
+            }
+            
+            let start = Instant::now();
+            let result = execute(&db, &explained_sql).await?;
+            let elapsed = start.elapsed();
+            total_duration += elapsed;
+            
+            if iterations > 1 {
+                println!("Tempo desta execução: {:?}", elapsed);
+            }
+
+            let explained_output = result
+                .into_iter()
+                .filter_map(|row| match row[0].as_str() {
+                    "logical_plan after optd-initial"
+                    | "physical_plan after optd-finalized" => Some(row[0..2].join(":\n")),
+                    _ => None,
+                })
+                .join("\n\n");
+
+            if iteration == 1 {
+                // Mostrar output da primeira execução
+                writeln!(r, "{}\n", explained_output)?;
+                if sql_queries.len() > 1 {
+                    println!("----- [{}] {} -----", idx + 1, source);
+                }
+                println!("{}", explained_output);
+            }
+        }
+        
+        if cli.test.is_some() && iterations > 1 {
+            let average_duration = total_duration / iterations as u32;
+            println!("\n📊 Estatísticas:");
+            println!("  Tempo total: {:?}", total_duration);
+            println!("  Tempo médio: {:?}", average_duration);
+        }
     }
     /* 
     match db.execute(&explain_query).await {
