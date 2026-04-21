@@ -19,6 +19,7 @@ use crate::{
 use datafusion::arrow::array::{
     Array, BooleanArray, Float32Array, Int32Array, RecordBatch, StringArray, StringViewArray,
 };
+use serde_json::{json, Value};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MemoGroupExpr {
@@ -838,6 +839,103 @@ impl MemoTable {
         db_statements
 
     }
+
+    pub fn dump_to_json(&self) -> Value {
+        let mut scalar_rows: Vec<Value> = Vec::new();
+        let mut group_rows: Vec<Value> = Vec::new();
+        let mut expression_rows: Vec<Value> = Vec::new();
+        let mut expression_input_rows: Vec<Value> = Vec::new();
+        let mut expression_scalar_rows: Vec<Value> = Vec::new();
+
+        let mut max_used_id = 0_i64;
+        for scalar_id in self.scalar_id_to_key.keys() {
+            max_used_id = max_used_id.max(scalar_id.0);
+        }
+        for group_id in self.groups.keys() {
+            max_used_id = max_used_id.max(group_id.0);
+        }
+        for group in self.groups.values() {
+            let exploration = group.exploration.borrow();
+            for expr in &exploration.exprs {
+                max_used_id = max_used_id.max(expr.id().0);
+            }
+        }
+        let mut next_generated_id = (max_used_id + 1).max(1);
+
+        let mut root_scalars: Vec<(GroupId, Arc<Scalar>)> = self
+            .scalar_id_to_key
+            .iter()
+            .map(|(id, scalar)| (*id, scalar.clone()))
+            .collect();
+        root_scalars.sort_by_key(|(id, _)| id.0);
+
+        for (scalar_id, scalar) in root_scalars {
+            let mut row = scalar.as_ref().to_json();
+            row.as_object_mut()
+                .unwrap()
+                .insert("id".to_string(), json!(scalar_id.0));
+            row.as_object_mut()
+                .unwrap()
+                .insert("referenced".to_string(), json!(true));
+            scalar_rows.push(row);
+
+            let mut queue: VecDeque<(Arc<Scalar>, GroupId, i32)> = scalar
+                .input_scalars()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(position, s)| (s, scalar_id, position as i32))
+                .collect();
+
+            while let Some((scalar, parent_id, position)) = queue.pop_front() {
+                let id = GroupId(next_generated_id);
+                next_generated_id += 1;
+
+                let mut row = scalar.as_ref().to_json();
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("id".to_string(), json!(id.0));
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("referenced".to_string(), json!(false));
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("parent_scalar".to_string(), json!(parent_id.0));
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("position".to_string(), json!(position));
+                scalar_rows.push(row);
+
+                queue.extend(
+                    scalar
+                        .input_scalars()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(child_position, s)| (s, id, child_position as i32)),
+                );
+            }
+        }
+
+        for group in self.groups.values() {
+            if let Some(group_dump) = group.dump_to_json() {
+                group_rows.push(group_dump.group);
+                expression_rows.extend(group_dump.expressions);
+                expression_input_rows.extend(group_dump.expression_inputs);
+                expression_scalar_rows.extend(group_dump.expression_scalars);
+            }
+        }
+
+        json!({
+            "scalar": scalar_rows,
+            "group": group_rows,
+            "expression": expression_rows,
+            "expression_input": expression_input_rows,
+            "expression_scalar": expression_scalar_rows,
+        })
+    }
+
+
     /// Adds an operator to the memo table.
     ///
     /// Returns the group id where the operator belongs:
@@ -1243,6 +1341,13 @@ impl MemoTable {
     }
 }
 
+struct GroupJsonDump {
+    group: Value,
+    expressions: Vec<Value>,
+    expression_inputs: Vec<Value>,
+    expression_scalars: Vec<Value>,
+}
+
 pub struct IdAllocator {
     next_id: AtomicI64,
 }
@@ -1306,6 +1411,75 @@ impl Exploration {
             status: Status::NotStarted,
             properties,
         }
+    }
+
+    fn dump_to_json(&self, group_id: GroupId) -> Option<GroupJsonDump> {
+        let first_expr = self.exprs.first()?;
+
+        let card = self
+            .properties
+            .cardinality
+            .get()
+            .map(|c| c.as_f64())
+            .unwrap_or(-1.0);
+        let columns = self
+            .properties
+            .output_columns
+            .get()
+            .map(|cols| cols.iter().map(|c| c.0.to_string()).join(","))
+            .unwrap_or("?".to_string());
+
+        let mut group = json!({
+            "id": group_id.0,
+            "kind": first_expr.key().kind().get_kind_string(),
+            "cardinality": card,
+            "columns": columns,
+        });
+        let metadata = first_expr.key().kind().get_metadata_string();
+        if !metadata.is_empty() {
+            group["metadata"] = json!(metadata);
+        }
+
+        let mut expressions = Vec::new();
+        for expr in self.exprs.iter().skip(1) {
+            let mut expr_row = json!({
+                "id": expr.id().0,
+                "group_id": group_id.0,
+                "kind": expr.key().kind().get_kind_string(),
+            });
+            let metadata = expr.key().kind().get_metadata_string();
+            if !metadata.is_empty() {
+                expr_row["metadata"] = json!(metadata);
+            }
+            expressions.push(expr_row);
+        }
+
+        let mut expression_inputs = Vec::new();
+        let mut expression_scalars = Vec::new();
+        for expr in &self.exprs {
+            for (position, input_group) in expr.key().input_operators().iter().enumerate() {
+                expression_inputs.push(json!({
+                    "expression_id": expr.id().0,
+                    "input_group": input_group.0,
+                    "position": position as i32,
+                }));
+            }
+
+            for (position, input_scalar) in expr.key().input_scalars().iter().enumerate() {
+                expression_scalars.push(json!({
+                    "expression_id": expr.id().0,
+                    "scalar_id": input_scalar.0,
+                    "position": position as i32,
+                }));
+            }
+        }
+
+        Some(GroupJsonDump {
+            group,
+            expressions,
+            expression_inputs,
+            expression_scalars,
+        })
     }
 }
 #[derive(Clone)]
@@ -1371,6 +1545,13 @@ pub struct MemoGroup {
 }
 
 impl MemoGroup {
+
+    fn dump_to_json(&self) -> Option<GroupJsonDump> {
+        let exploration = self.exploration.borrow();
+        exploration.dump_to_json(self.group_id)
+    }
+
+
     fn dump_to_db(&self) -> HashMap<String, Vec<String>> 
     {
         let mut res: HashMap<String, Vec<String>> = HashMap::new();

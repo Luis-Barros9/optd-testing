@@ -58,6 +58,12 @@ impl Cascades {
             }
     }
 
+    pub async fn get_json(&self)  {
+            println!("Memo JSON Dump:");        
+            let json = self.memo.read().await.dump_to_json();
+            println!("{}", json);
+    }
+
     /// Optimizes a query plan to find the lowest-cost execution plan that satisfies the requirement.
     pub async fn optimize(
         self: &Arc<Self>,
@@ -69,7 +75,7 @@ impl Cascades {
 
         let group_id =  self.insert_new_operator(plan).await;
 
-        self.get_insert_statements().await; // APAGAR DPS, apenas para obter plano lógico
+        //self.get_insert_statements().await; // APAGAR DPS, apenas para obter plano lógico
         //println!("Inserted operator into memo with group_id: {group_id}");
 
 
@@ -123,7 +129,7 @@ impl Cascades {
     
         // create  insert statements to persist the memo if needed
         //if !persistent_layer {self.get_insert_statements().await;}
-    
+        if !persistent_layer {self.get_json().await;}
 
         // DEBUG: print MEMO  
         // info!("optimized plan: {:#?}", best_plan);

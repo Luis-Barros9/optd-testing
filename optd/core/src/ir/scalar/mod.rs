@@ -21,6 +21,7 @@ mod literal;
 mod nary_op;
 
 use std::sync::Arc;
+use serde_json::{json, Map, Value};
 
 pub use assign::*;
 pub use binary_op::*;
@@ -128,6 +129,20 @@ impl Scalar {
     /// Gets the slice to the input scalar expressions.
     pub fn input_scalars(&self) -> &[Arc<Scalar>] {
         &self.common.input_scalars
+    }
+
+    /// Generates a mutable JSON object with scalar-specific fields.
+    ///
+    /// Callers can append extra relation fields afterwards (e.g. id, position,
+    /// referenced, parent_scalar).
+    pub fn to_json(&self) -> Value {
+        let mut obj = Map::new();
+        obj.insert("kind".to_string(), json!(self.kind.get_kind_string()));
+        let metadata = self.kind.get_metadata_string();
+        if !metadata.is_empty() {
+            obj.insert("metadata".to_string(), json!(metadata));
+        }
+        Value::Object(obj)
     }
 
         
