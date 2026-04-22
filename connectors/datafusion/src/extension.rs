@@ -33,8 +33,6 @@ static MEMO_PRELOAD_ROWS: OnceLock<Mutex<Option<MemoRows>>> = OnceLock::new();
 static USE_PERSISTENT_MEMO: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 
 
-
-
 fn memo_preload_rows_store() -> &'static Mutex<Option<MemoRows>> {
     MEMO_PRELOAD_ROWS.get_or_init(|| Mutex::new(None))
 }
@@ -63,4 +61,3 @@ pub fn use_persistent_memo() -> bool {
     let guard = USE_PERSISTENT_MEMO.get_or_init(|| Mutex::new(None)).lock().unwrap();
     guard.unwrap_or(false)
 }
-

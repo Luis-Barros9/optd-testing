@@ -218,10 +218,7 @@ impl MemoTable {
 
     pub fn load_from_db(&mut self, db_rows: HashMap<String, Vec<RecordBatch>>){
         //TODO load the memo from the database, see memo.sql for the schema
-        // make sure the structures are empty before loading
-
-        
-
+        // make sure the structures are empty before loading    
         fn parse_float(
             batch: &RecordBatch,
             row: usize,

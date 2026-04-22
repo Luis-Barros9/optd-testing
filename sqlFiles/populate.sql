@@ -23,6 +23,8 @@ LOCATION 'data/tpch/orders.parquet';
 CREATE EXTERNAL TABLE partsupp
 STORED AS PARQUET
 LOCATION 'data/tpch/partsupp.parquet';
+
+
 CREATE EXTERNAL TABLE supplier
 STORED AS PARQUET
 LOCATION 'data/tpch/supplier.parquet';

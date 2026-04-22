@@ -1,6 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use datafusion::{
@@ -66,9 +69,20 @@ use crate::{
 
 const DEFAULT_ROW_COUNT: usize = 1000;
 
-#[derive(Default)]
 pub struct OptdQueryPlanner {
     default: DefaultPhysicalPlanner,
+    cascades: Mutex<Option<Arc<Cascades>>>,
+    projected_name_seed: AtomicU64,
+}
+
+impl Default for OptdQueryPlanner {
+    fn default() -> Self {
+        Self {
+            default: DefaultPhysicalPlanner::default(),
+            cascades: Mutex::new(None),
+            projected_name_seed: AtomicU64::new(0),
+        }
+    }
 }
 
 impl std::fmt::Debug for OptdQueryPlanner {
@@ -125,6 +139,32 @@ fn precision_to_string<T: ToString + PartialOrd + Eq + Clone + std::fmt::Debug>(
 }
 
 impl OptdQueryPlanner {
+    fn unique_projected_name(&self, ctx: &IRContext, base: String) -> String {
+        if ctx.column_by_name(&base).is_none() {
+            return base;
+        }
+
+        // Keep trying deterministic suffixes until we find a free name.
+        loop {
+            let seed = self.projected_name_seed.fetch_add(1, Ordering::Relaxed);
+            let candidate = format!("{base}__optd_{seed}");
+            if ctx.column_by_name(&candidate).is_none() {
+                return candidate;
+            }
+        }
+    }
+
+    fn shared_cascades(&self, ctx: IRContext, rule_set: RuleSet) -> Arc<Cascades> {
+        let mut cascades = self.cascades.lock().unwrap();
+        if let Some(existing) = cascades.as_ref() {
+            return Arc::clone(existing);
+        }
+
+        let shared = Arc::new(Cascades::new(ctx, rule_set));
+        *cascades = Some(Arc::clone(&shared));
+        shared
+    }
+
     pub async fn try_into_optd_logical_plan(
         &self,
         df_logical: &LogicalPlan,
@@ -294,9 +334,10 @@ impl OptdQueryPlanner {
                 .await?;
 
             let expr = if should_project {
-                let name = maybe_aliased
+                let base_name = maybe_aliased
                     .name_for_alias()
                     .whatever_context("failed to get DataFusion name for alias")?;
+                let name = self.unique_projected_name(ctx, base_name);
                 let data_type = maybe_aliased.get_type(input_schema).unwrap();
                 let column = if let Ok(column_ref) = optd_expr.try_borrow::<ColumnRef>() {
                     let column = *column_ref.column();
@@ -1504,17 +1545,10 @@ impl OptdQueryPlanner {
                 .create_physical_plan_default(logical_plan, session_state)
                 .await;
         }
-        let ctx = IRContext::with_empty_magic();
-
         let (actual_logical_plan, mut explain) = match logical_plan {
             LogicalPlan::Explain(explain) => (explain.plan.as_ref(), Some(explain.clone())),
             _ => (logical_plan, None),
         };
-
-        let optd_logical = self
-            .try_into_optd_logical_plan(actual_logical_plan, &ctx, session_state)
-            .await
-            .map_err(|e| DataFusionError::External(e.into()))?;
 
         // let Ok(optd_logical) = res else {
         //     return self
@@ -1533,17 +1567,25 @@ impl OptdQueryPlanner {
             .add_rule(rules::LogicalJoinInnerCommuteRule::new())
             .add_rule(rules::LogicalJoinInnerAssocRule::new())
             .build();
-        let opt = Arc::new(Cascades::new(ctx, rule_set));
+        let opt: Arc<Cascades> = self.shared_cascades(IRContext::with_empty_magic(), rule_set);
+
+        // Important: logical conversion must use the same ctx as the shared cascades/memo.
+        let optd_logical = self
+            .try_into_optd_logical_plan(actual_logical_plan, &opt.ctx, session_state)
+            .await
+            .map_err(|e| DataFusionError::External(e.into()))?;
 
         let mut presistent_layer =false;
         if use_persistent_memo() {
             if let Some(memo_rows) = take_memo_preload_rows() {
+
                 info!("applying memo preload before optimize");
                 opt.load_memo_from_db(memo_rows).await;
                 info!("memo preload applied before optimize");
                 presistent_layer = true;
             }
         }
+
 
         //
         let Some(optd_physical) = opt.optimize(&optd_logical, Arc::default(),presistent_layer).await else {

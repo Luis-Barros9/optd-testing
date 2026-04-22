@@ -105,14 +105,8 @@ impl Cascades {
 
         let group_id =  self.insert_new_operator(plan).await;
 
-        //self.get_insert_statements().await; // APAGAR DPS, apenas para obter plano lógico
-        //println!("Inserted operator into memo with group_id: {group_id}");
-
-
-        
         //visualizar a criação dos grupos por explorar(NotStarted)
-        //println!("Inserted operator into memo");
-        //println!("memo: {:#?}", self.memo.read().await);
+        println!("memo: {:#?}", self.memo.read().await);
         
 
 
@@ -141,7 +135,6 @@ impl Cascades {
             return None;
         }
         let best_root = best_root.unwrap();
-        //println!("Found best costed expression");
         let properties = {
             let reader = self.memo.read().await;
             reader
@@ -151,7 +144,6 @@ impl Cascades {
                 .properties
                 .clone()
         };
-        //println!("Extracting best group expression");
         let best_plan =self.
             extract_best_group_expr(&best_root, group_id, properties)
             .await?;
@@ -159,13 +151,11 @@ impl Cascades {
     
         // create  insert statements to persist the memo if needed
         //if !persistent_layer {self.get_insert_statements().await;}
-        if !persistent_layer {self.get_json().await;}
+        //if !persistent_layer {self.get_json().await;}
 
         // DEBUG: print MEMO  
         // info!("optimized plan: {:#?}", best_plan);
         //println!("Final memo: {:#?}", self.memo.read().await);
-
-        //print!("optimized plan: {:#?}", best_plan);
         Some(best_plan)
     }
 

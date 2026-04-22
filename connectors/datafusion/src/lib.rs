@@ -80,9 +80,7 @@ impl DataFusionDB {
 
     pub fn set_persistent_memo(&self, value: bool) {
         extension::set_persistent_memo(value);
-    }
-
-    
+    }    
 
 
     pub async fn execute_one(&self, sql: &str) -> Result<Vec<RecordBatch>, DataFusionError> {

@@ -142,11 +142,45 @@ async fn main() -> Result<()> {
         bail!("Indique pelo menos uma query com --query ou um/mais ficheiros com --file/--f");
     }
 
-    // Ler queries: uma query direta ou varias queries de ficheiro pela ordem fornecida
+    // Ler queries: uma query direta ou varias queries de ficheiro pela ordem fornecida.
+    // Se o caminho for uma diretoria, expande para todos os ficheiros .sql (ordem alfabética).
     let sql_queries = if let Some(q) = cli.query {
         vec![("<inline-query>".to_string(), q)]
     } else {
-        cli.query_files
+        let mut expanded_query_files = Vec::new();
+
+        for path in &cli.query_files {
+            let metadata = fs::metadata(path)?;
+            if metadata.is_dir() {
+                let mut dir_sql_files = fs::read_dir(path)?
+                    .filter_map(|entry| entry.ok().map(|e| e.path()))
+                    .filter(|p| {
+                        p.is_file()
+                            && p
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .map(|ext| ext.eq_ignore_ascii_case("sql"))
+                                .unwrap_or(false)
+                    })
+                    .collect::<Vec<_>>();
+
+                dir_sql_files.sort();
+
+                if dir_sql_files.is_empty() {
+                    bail!("A diretoria '{}' não contém ficheiros .sql", path);
+                }
+
+                expanded_query_files.extend(
+                    dir_sql_files
+                        .into_iter()
+                        .map(|p| p.to_string_lossy().to_string()),
+                );
+            } else {
+                expanded_query_files.push(path.clone());
+            }
+        }
+
+        expanded_query_files
             .iter()
             .map(|file| Ok((file.clone(), fs::read_to_string(file)?)))
             .collect::<Result<Vec<_>>>()?
@@ -237,29 +271,27 @@ async fn main() -> Result<()> {
             let result = execute(&db, &explained_sql).await?;
             let elapsed = start.elapsed();
             total_duration += elapsed;
-            
-            if iterations > 1 {
-                println!("Tempo desta execução: {:?}", elapsed);
-            }
-
-            let explained_output = result
-                .into_iter()
-                .filter_map(|row| match row[0].as_str() {
-                    "logical_plan after optd-initial"
-                    | "physical_plan after optd-finalized" => Some(row[0..2].join(":\n")),
-                    _ => None,
-                })
-                .join("\n\n");
 
             if iteration == 1 {
-                // Mostrar output da primeira execução
+                
+                let explained_output = result
+                    .into_iter()
+                    .filter_map(|row| match row[0].as_str() {
+                        "logical_plan after optd-initial"
+                        | "physical_plan after optd-finalized" => Some(row[0..2].join(":\n")),
+                        _ => None,
+                    })
+                    .join("\n\n");
+                    // Mostrar output da primeira execução
                 writeln!(r, "{}\n", explained_output)?;
                 if sql_queries.len() > 1 {
                     println!("----- [{}] {} -----", idx + 1, source);
                 }
                 println!("{}", explained_output);
             }
+            println!("Tempo desta execução: {:?}", elapsed);
         }
+        
         
         if cli.test.is_some() && iterations > 1 {
             let average_duration = total_duration / iterations as u32;
