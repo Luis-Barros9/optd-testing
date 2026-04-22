@@ -59,9 +59,30 @@ impl Cascades {
     }
 
     pub async fn get_json(&self)  {
-            println!("Memo JSON Dump:");        
+            println!("Memo JSON Dump por tabela:");
             let json = self.memo.read().await.dump_to_json();
-            println!("{}", json);
+
+            let table_order = [
+                "group",
+                "expression",
+                "scalar",
+                "expression_input",
+                "expression_scalar",
+            ];
+
+            if let Some(root) = json.as_object() {
+                for table in table_order {
+                    let table_json = root
+                        .get(table)
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+
+                    println!("--- {} ---", table);
+                    println!("{}", table_json);
+                }
+            } else {
+                println!("{}", json);
+            }
     }
 
     /// Optimizes a query plan to find the lowest-cost execution plan that satisfies the requirement.
@@ -129,7 +150,7 @@ impl Cascades {
     
         // create  insert statements to persist the memo if needed
         //if !persistent_layer {self.get_insert_statements().await;}
-        if !persistent_layer {self.get_json().await;}
+        //if !persistent_layer {self.get_json().await;}
 
         // DEBUG: print MEMO  
         // info!("optimized plan: {:#?}", best_plan);

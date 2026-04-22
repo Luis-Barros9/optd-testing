@@ -55,3 +55,11 @@ Ver a simplificaçáo para os testes do professor, utilizar source e output colu
 Apresentar alterações que efetuei e suas limitações
 
 Serde Json  https://docs.rs/serde_json/latest/serde_json/
+
+
+
+(Get-Content .\data\group.json -Raw | ConvertFrom-Json) | ForEach-Object { $_ | ConvertTo-Json -Compress } | Set-Content .\data\group.ndjson
+(Get-Content .\data\expression.json -Raw | ConvertFrom-Json) | ForEach-Object { $_ | ConvertTo-Json -Compress } | Set-Content .\data\expression.ndjson
+(Get-Content .\data\scalar.json -Raw | ConvertFrom-Json) | ForEach-Object { $_ | ConvertTo-Json -Compress } | Set-Content .\data\scalar.ndjson
+(Get-Content .\data\expressioninput.json -Raw | ConvertFrom-Json) | ForEach-Object { $_ | ConvertTo-Json -Compress } | Set-Content .\data\expressioninput.ndjson
+(Get-Content .\data\expressionscalar.json -Raw | ConvertFrom-Json) | ForEach-Object { $_ | ConvertTo-Json -Compress } | Set-Content .\data\expressionscalar.ndjson
