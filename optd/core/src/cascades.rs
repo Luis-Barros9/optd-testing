@@ -59,7 +59,7 @@ impl Cascades {
     }
 
     pub async fn get_json(&self)  {
-            println!("Memo JSON Dump por tabela:");
+            println!("Memo NDJSON Dump por tabela:");
             let json = self.memo.read().await.dump_to_json();
 
             let table_order = [
@@ -77,8 +77,17 @@ impl Cascades {
                         .cloned()
                         .unwrap_or_else(|| serde_json::Value::Array(vec![]));
 
-                    println!("--- {} ---", table);
-                    println!("{}", table_json);
+                    if let Some(table_json_array) = table_json.as_array() {
+    
+                        println!("--- {} ({} rows) ---", table, table_json_array.len());
+                        for row in table_json_array {
+                            println!("{}",row);
+                        }
+                    } else {
+                        println!("--- {} ---", table);
+                        println!("{}", table_json);
+                    }
+
                 }
             } else {
                 println!("{}", json);
@@ -150,7 +159,7 @@ impl Cascades {
     
         // create  insert statements to persist the memo if needed
         //if !persistent_layer {self.get_insert_statements().await;}
-        //if !persistent_layer {self.get_json().await;}
+        if !persistent_layer {self.get_json().await;}
 
         // DEBUG: print MEMO  
         // info!("optimized plan: {:#?}", best_plan);
