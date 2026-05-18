@@ -15,6 +15,9 @@ extensions_options! {
        pub optd_enabled: bool, default = true
        /// Should fail on any unsupported features.
        pub optd_strict_mode: bool, default = false
+
+        //try later
+       //pub optd_persistent_memo: bool, default = false
    }
 }
 

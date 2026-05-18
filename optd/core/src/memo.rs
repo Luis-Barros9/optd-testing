@@ -5,6 +5,8 @@ use std::{
 
 
 
+
+
 use itertools::Itertools;
 use tokio::sync::watch;
 use tracing::{info, instrument, trace};
@@ -13,11 +15,15 @@ use crate::{
     ir::{
         Column, ColumnSet, Group, GroupId, IRCommon, IRContext, Operator, OperatorKind, Scalar, convert::IntoOperator, cost::Cost, explain::{Explain, ExplainOption}, properties::{Cardinality, GetProperty, OperatorProperties, OutputColumns, Required}
     },
+    parser_records::{parse_float, parse_int, parse_nullable_string, parse_string},
     utility::union_find::UnionFind,
 };
 
+
+
+
 use datafusion::arrow::array::{
-    Array, BooleanArray, Float32Array, Int32Array, RecordBatch, StringArray, StringViewArray,
+    Array, BooleanArray, RecordBatch
 };
 use serde_json::{json, Value};
 
@@ -216,96 +222,9 @@ impl MemoTable {
         self.id_allocator = Default::default(); // NOTE: LATER TRY WITHOUT RESTARTING ID ALLOCATOR
     }
 
-    pub fn load_from_db(&mut self, db_rows: HashMap<String, Vec<RecordBatch>>){
+    pub fn load_from_db(&mut self, db_rows: HashMap<String, Vec<RecordBatch>>) {
         //TODO load the memo from the database, see memo.sql for the schema
-        // make sure the structures are empty before loading    
-        fn parse_float(
-            batch: &RecordBatch,
-            row: usize,
-            column: &str,
-        ) -> Result<Option<f32>, String> {
-            let col = batch
-                .column_by_name(column)
-                .ok_or_else(|| format!("missing '{}' column", column))?
-                .as_any()
-                .downcast_ref::<Float32Array>()
-                .ok_or_else(|| format!("column '{}' is not Float32", column))?;
-
-            if col.is_null(row) {
-                return Ok(None);
-            }
-
-            Ok(Some(col.value(row)))
-        }
-
-        fn parse_int(
-            batch: &RecordBatch,
-            row: usize,
-            column: &str,
-        ) -> Result<GroupId, String> {
-            let col = batch
-                .column_by_name(column)
-                .ok_or_else(|| format!("missing '{}' column", column))?
-                .as_any()
-                .downcast_ref::<Int32Array>()
-                .ok_or_else(|| format!("column '{}' is not Int32", column))?;
-
-            if col.is_null(row) {
-                return Err(format!("column '{}' is NULL at row {}", column, row));
-            }
-
-            Ok(GroupId(i64::from(col.value(row))))
-        }
-
-        fn parse_kind(batch: &RecordBatch, row: usize, column: &str) -> Result<String, String> {
-            let arr = batch
-                .column_by_name(column)
-                .ok_or_else(|| format!("missing '{}' column", column))?;
-
-            if let Some(col) = arr.as_any().downcast_ref::<StringViewArray>() {
-                if col.is_null(row) {
-                    return Err(format!("column '{}' is NULL at row {}", column, row));
-                }
-                return Ok(col.value(row).to_string());
-            }
-
-            if let Some(col) = arr.as_any().downcast_ref::<StringArray>() {
-                if col.is_null(row) {
-                    return Err(format!("column '{}' is NULL at row {}", column, row));
-                }
-                return Ok(col.value(row).to_string());
-            }
-
-            Err(format!("column '{}' is not Utf8/Utf8View", column))
-        }
-
-        fn parse_nullablemetadata(
-            batch: &RecordBatch,
-            row: usize,
-            column: &str,
-        ) -> Result<Option<String>, String> {
-            let arr = batch
-                .column_by_name(column)
-                .ok_or_else(|| format!("missing '{}' column", column))?;
-
-            if let Some(col) = arr.as_any().downcast_ref::<StringViewArray>() {
-                if col.is_null(row) {
-                    return Ok(None);
-                }
-                return Ok(Some(col.value(row).to_string()));
-            }
-
-            if let Some(col) = arr.as_any().downcast_ref::<StringArray>() {
-                if col.is_null(row) {
-                    return Ok(None);
-                }
-                return Ok(Some(col.value(row).to_string()));
-            }
-
-            Err(format!("column '{}' is not Utf8/Utf8View", column))
-        }
-
-
+        // make sure the structures are empty before loading
         //println!("Loading memo from database...");
         self.clear_memo();
 
@@ -321,7 +240,10 @@ impl MemoTable {
         for batch in db_rows.get("scalar").unwrap_or(&vec![]) {
             for row in 0..batch.num_rows() {
                 // TODO rever
-                let scalar_id = match parse_int(batch, row, "id") {
+
+                let scalar_id = match parse_int(batch, row, "id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping scalar row {}: {}", row, err);
@@ -329,7 +251,8 @@ impl MemoTable {
                     }
                 };
 
-                let kind_name = match parse_kind(batch, row, "kind") {
+                let kind_name = match parse_string(batch, row, "kind")
+                    .map_err(|err| err.to_string()) {
                     Ok(kind) => kind,
                     Err(err) => {
                         trace!("Skipping scalar row {}: {}", row, err);
@@ -337,7 +260,8 @@ impl MemoTable {
                     }
                 };
 
-                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                let metadata = match parse_nullable_string(batch, row, "metadata")
+                    .map_err(|err| err.to_string()) {
                     Ok(value) => value,
                     Err(err) => {
                         trace!("Skipping scalar row {}: {}", row, err);
@@ -359,35 +283,16 @@ impl MemoTable {
                 };
 
                 let parent_scalar = {
-                    let Some(col) = batch
-                        .column_by_name("parent_scalar")
-                        .and_then(|c| c.as_any().downcast_ref::<Int32Array>())
-                    else {
-                        trace!("Skipping scalar row {}: missing/invalid 'parent_scalar' Int32 column", row);
-                        continue;
-                    };
-
-                    if col.is_null(row) {
-                        None
-                    } else {
-                        Some(GroupId(i64::from(col.value(row))))
-                    }
+                    parse_int(batch, row, "parent_scalar")
+                        .map(GroupId)
+                        .ok()
                 };
 
                 let scalar_position = {
-                    let Some(col) = batch
-                        .column_by_name("position")
-                        .and_then(|c| c.as_any().downcast_ref::<Int32Array>())
-                    else {
-                        trace!("Skipping scalar row {}: missing/invalid 'position' Int32 column", row);
-                        continue;
-                    };
-
-                    if col.is_null(row) {
-                        None
-                    } else {
-                        Some(col.value(row))
-                    }
+                    parse_int(batch, row, "position")
+                        .map(GroupId)
+                        .ok()
+                        .map(|group_id| group_id.0 as i32)
                 };
 
                 let Some(parsed_kind) = crate::ir::scalar::ScalarKind::from_kind_and_metadata_string(&kind_name, metadata_str) else {
@@ -452,7 +357,9 @@ impl MemoTable {
         for batch in db_rows.get("expression_input").unwrap_or(&vec![]) {
             for row in 0..batch.num_rows() {
                 // TODO rever
-                let _expr_id = match parse_int(batch, row, "expression_id") {
+                let _expr_id = match parse_int(batch, row, "expression_id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression_input row {}: {}", row, err);
@@ -460,7 +367,9 @@ impl MemoTable {
                     }
                 };
 
-                let _input_group = match parse_int(batch, row, "input_group") {
+                let _input_group = match parse_int(batch, row, "input_group")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression_input row {}: {}", row, err);
@@ -468,8 +377,9 @@ impl MemoTable {
                     }
                 };
 
-                let _position = match parse_int(batch, row, "position") {
-                    Ok(pos) => pos.0 as i32,
+                let _position = match parse_int(batch, row, "position")
+                    .map_err(|err| err.to_string()) {
+                    Ok(pos) => pos as i32,
                     Err(err) => {
                         trace!("Skipping expression_input row {}: {}", row, err);
                         continue;
@@ -490,7 +400,9 @@ impl MemoTable {
         for batch in db_rows.get("expression_scalar").unwrap_or(&vec![]) {
             for row in 0..batch.num_rows() {
                 // TODO rever
-                let _expr_id = match parse_int(batch, row, "expression_id") {
+                let _expr_id = match parse_int(batch, row, "expression_id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression_scalar row {}: {}", row, err);
@@ -498,7 +410,9 @@ impl MemoTable {
                     }
                 };
 
-                let _scalar_id = match parse_int(batch, row, "scalar_id") {
+                let _scalar_id = match parse_int(batch, row, "scalar_id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression_scalar row {}: {}", row, err);
@@ -506,8 +420,9 @@ impl MemoTable {
                     }
                 };
 
-                let _position = match parse_int(batch, row, "position") {
-                    Ok(pos) => pos.0 as i32,
+                let _position = match parse_int(batch, row, "position")
+                    .map_err(|err| err.to_string()) {
+                    Ok(pos) => pos as i32,
                     Err(err) => {
                         trace!("Skipping expression_scalar row {}: {}", row, err);
                         continue;
@@ -557,7 +472,9 @@ impl MemoTable {
         for batch in db_rows.get("expression").unwrap_or(&vec![]) {
             for row in 0..batch.num_rows() {
                 // TODO rever
-                let expr_id = match parse_int(batch, row, "id") {
+                let expr_id = match parse_int(batch, row, "id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression row {}: {}", row, err);
@@ -565,7 +482,9 @@ impl MemoTable {
                     }
                 };
 
-                let group_id = match parse_int(batch, row, "group_id") {
+                let group_id = match parse_int(batch, row, "group_id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping expression row {}: {}", row, err);
@@ -573,7 +492,8 @@ impl MemoTable {
                     }
                 };
 
-                let kind = match parse_kind(batch, row, "kind") {
+                let kind = match parse_string(batch, row, "kind")
+                    .map_err(|err| err.to_string()) {
                     Ok(k) => k,
                     Err(err) => {
                         trace!("Skipping expression row {}: {}", row, err);
@@ -581,7 +501,8 @@ impl MemoTable {
                     }
                 };
 
-                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                let metadata = match parse_nullable_string(batch, row, "metadata")
+                    .map_err(|err| err.to_string()) {
                     Ok(m) => m,
                     Err(err) => {
                         trace!("Skipping expression row {}: {}", row, err);
@@ -589,7 +510,8 @@ impl MemoTable {
                     }
                 };
 
-                let _cost = match parse_float(batch, row, "cost") {
+                let _cost = match parse_float(batch, row, "cost", true)
+                    .map_err(|err| err.to_string()) {
                     Ok(c) => c,
                     Err(err) => {
                         trace!("Skipping expression row {}: {}", row, err);
@@ -625,7 +547,10 @@ impl MemoTable {
         for batch in db_rows.get("group").unwrap_or(&vec![]) {
             for row in 0..batch.num_rows() {
                 // TODO rever
-                let group_id = match parse_int(batch, row, "id") {
+
+                let group_id = match parse_int(batch, row, "id")
+                    .map(GroupId)
+                    .map_err(|err| err.to_string()) {
                     Ok(id) => id,
                     Err(err) => {
                         trace!("Skipping group row {}: {}", row, err);
@@ -633,7 +558,8 @@ impl MemoTable {
                     }
                 };
 
-                let kind = match parse_kind(batch, row, "kind") {
+                let kind = match parse_string(batch, row, "kind")
+                    .map_err(|err| err.to_string()) {
                     Ok(k) => k,
                     Err(err) => {
                         trace!("Skipping group row {}: {}", row, err);
@@ -641,7 +567,8 @@ impl MemoTable {
                     }
                 };
 
-                let metadata = match parse_nullablemetadata(batch, row, "metadata") {
+                let metadata = match parse_nullable_string(batch, row, "metadata")
+                    .map_err(|err| err.to_string()) {
                     Ok(m) => m,
                     Err(err) => {
                         trace!("Skipping group row {}: {}", row, err);
@@ -649,20 +576,22 @@ impl MemoTable {
                     }
                 };
 
-                let cardinality = match parse_float(batch, row, "cardinality") {
+                let cardinality = match parse_float(batch, row, "cardinality", false)
+                    .map_err(|err| err.to_string()) {
                     Ok(c) => c,
                     Err(err) => {
                         trace!("Skipping group row {}: {}", row, err);
                         continue;
                     }
                 };
-                let columns = match parse_nullablemetadata(batch, row, "columns") {
+                let columns = match parse_nullable_string(batch, row, "columns")
+                    .map_err(|err| err.to_string()) {
                     Ok(m) => m,
                     Err(err) => {
                         trace!("Skipping group row {}: {}", row, err);
                         continue;
                     }
-                    };
+                };
                 
                 
                 let expression = match make_expression(metadata.as_deref(), &kind, group_id) {
@@ -765,7 +694,8 @@ impl MemoTable {
         println!("Memo after loading from database:");
         println!("{:?}", self);
         println!("Finished loading memo from database.");
-        */
+         */
+        
     }
 
     pub fn dump_to_db(&self) -> HashMap<String, Vec<String>> {
@@ -1864,5 +1794,61 @@ mod tests {
 
         let res = memo.insert_operator_into_group(m1_select_binding, into_group_id);
         assert_eq!(Err(into_group_id), res);
+    }
+
+    #[test]
+    fn load_from_db_accepts_non_int32_ids() {
+        use std::sync::Arc;
+
+        use datafusion::arrow::{
+            array::{ArrayRef, Float32Array, Int64Array, StringArray},
+            datatypes::{DataType, Field, Schema},
+        };
+
+        let mut memo = MemoTable::new(IRContext::with_empty_magic());
+
+        let group_batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, false),
+                Field::new("kind", DataType::Utf8, false),
+                Field::new("metadata", DataType::Utf8, true),
+                Field::new("cardinality", DataType::Float32, true),
+                Field::new("columns", DataType::Utf8, true),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![4])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["LogicalProject"])) as ArrayRef,
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                Arc::new(Float32Array::from(vec![Some(1.0)])) as ArrayRef,
+                Arc::new(StringArray::from(vec![Some("0")])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+
+        let expression_batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, false),
+                Field::new("group_id", DataType::Int64, false),
+                Field::new("kind", DataType::Utf8, false),
+                Field::new("metadata", DataType::Utf8, true),
+                Field::new("cost", DataType::Float32, true),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![4])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![4])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["LogicalProject"])) as ArrayRef,
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                Arc::new(Float32Array::from(vec![Some(1.0)])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+
+        let mut rows = std::collections::HashMap::new();
+        rows.insert("group".to_string(), vec![group_batch]);
+        rows.insert("expression".to_string(), vec![expression_batch]);
+
+        memo.load_from_db(rows);
+
+        assert!(memo.get_memo_group(&GroupId(4)).exploration.borrow().exprs.len() >= 1);
     }
 }

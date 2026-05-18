@@ -12,6 +12,7 @@ optd-catalog = { path = "../../optd/catalog", version = "0.1" }
 itertools = { workspace = true }
 async-trait = { workspace = true }
 snafu = { workspace = true }
+anyhow = "1.0"
 
 [dev-dependencies]
 tempfile = "3.13"

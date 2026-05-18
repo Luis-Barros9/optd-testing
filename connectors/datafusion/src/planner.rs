@@ -1,9 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
 };
 
 use datafusion::{
@@ -72,7 +71,6 @@ const DEFAULT_ROW_COUNT: usize = 1000;
 pub struct OptdQueryPlanner {
     default: DefaultPhysicalPlanner,
     cascades: Mutex<Option<Arc<Cascades>>>,
-    projected_name_seed: AtomicU64,
 }
 
 impl Default for OptdQueryPlanner {
@@ -80,7 +78,6 @@ impl Default for OptdQueryPlanner {
         Self {
             default: DefaultPhysicalPlanner::default(),
             cascades: Mutex::new(None),
-            projected_name_seed: AtomicU64::new(0),
         }
     }
 }
@@ -139,21 +136,6 @@ fn precision_to_string<T: ToString + PartialOrd + Eq + Clone + std::fmt::Debug>(
 }
 
 impl OptdQueryPlanner {
-    fn unique_projected_name(&self, ctx: &IRContext, base: String) -> String {
-        if ctx.column_by_name(&base).is_none() {
-            return base;
-        }
-
-        // Keep trying deterministic suffixes until we find a free name.
-        loop {
-            let seed = self.projected_name_seed.fetch_add(1, Ordering::Relaxed);
-            let candidate = format!("{base}__optd_{seed}");
-            if ctx.column_by_name(&candidate).is_none() {
-                return candidate;
-            }
-        }
-    }
-
     fn shared_cascades(&self, ctx: IRContext, rule_set: RuleSet) -> Arc<Cascades> {
         let mut cascades = self.cascades.lock().unwrap();
         if let Some(existing) = cascades.as_ref() {
@@ -164,6 +146,13 @@ impl OptdQueryPlanner {
         *cascades = Some(Arc::clone(&shared));
         shared
     }
+
+
+    fn reset_cascades(&self) {
+        let mut cascades = self.cascades.lock().unwrap();
+        *cascades = None;
+    }
+
 
     pub async fn try_into_optd_logical_plan(
         &self,
@@ -251,7 +240,7 @@ impl OptdQueryPlanner {
                 .column_by_name(optd_field.name())
                 .whatever_context("cannot find column by name in ctx")?;
             let mapped =
-                ctx.define_column(optd_field.data_type().clone(), Some(remapped_column_name));
+                ctx.define_column(optd_field.data_type().clone(), Some(remapped_column_name)); // TODO check
             mappings.push(column_assign(mapped, column_ref(column)));
         }
         Ok(LogicalRemap::new(input, list(mappings)).into_operator())
@@ -334,17 +323,16 @@ impl OptdQueryPlanner {
                 .await?;
 
             let expr = if should_project {
-                let base_name = maybe_aliased
+                let name = maybe_aliased
                     .name_for_alias()
                     .whatever_context("failed to get DataFusion name for alias")?;
-                let name = self.unique_projected_name(ctx, base_name);
                 let data_type = maybe_aliased.get_type(input_schema).unwrap();
                 let column = if let Ok(column_ref) = optd_expr.try_borrow::<ColumnRef>() {
                     let column = *column_ref.column();
-                    ctx.rename_column_alias(column, name);
+                    ctx.rename_column_alias(column, name); // TODO check
                     column
                 } else {
-                    ctx.define_column(data_type.clone(), Some(name))
+                    ctx.define_column(data_type.clone(), Some(name)) //TODO check
                 };
                 column_assign(column, optd_expr)
             } else {
@@ -758,8 +746,8 @@ impl OptdQueryPlanner {
             &session_state.config_options().catalog.default_catalog,
             &session_state.config_options().catalog.default_schema,
         );
-
-        let table_name = node
+        
+       let table_name = node
             .table_name
             .clone()
             .resolve(default_catalog, default_schema)
@@ -773,7 +761,7 @@ impl OptdQueryPlanner {
             .cat
             .try_create_table(table_name, schema.clone())
             .unwrap_or_else(|existing| existing);
-        let first_column = ctx.add_base_table_columns(source, &schema);
+        let first_column = ctx.add_base_table_columns(source, &schema); // TODO check
 
         let provider = source_as_provider(&node.source).unwrap();
         let exec = provider
@@ -1567,24 +1555,121 @@ impl OptdQueryPlanner {
             .add_rule(rules::LogicalJoinInnerCommuteRule::new())
             .add_rule(rules::LogicalJoinInnerAssocRule::new())
             .build();
-        let opt: Arc<Cascades> = self.shared_cascades(IRContext::with_empty_magic(), rule_set);
 
+
+
+
+        let mut opt: Arc<Cascades> = self.shared_cascades(IRContext::with_empty_magic(), rule_set);
+
+        let mut presistent_layer =false;
+        if use_persistent_memo() {
+            if let Some(memo_rows) = take_memo_preload_rows() {
+                //println!("DEBUG: applying memo preload before optimize");
+                info!("applying memo preload before optimize");
+
+                let rule_set1 = RuleSet::builder()
+            .add_rule(rules::LogicalGetAsPhysicalTableScanRule::new())
+            .add_rule(rules::LogicalAggregateAsPhysicalHashAggregateRule::new())
+            .add_rule(rules::LogicalJoinAsPhysicalHashJoinRule::new())
+            .add_rule(rules::LogicalJoinAsPhysicalNLJoinRule::new())
+            .add_rule(rules::LogicalProjectAsPhysicalProjectRule::new())
+            .add_rule(rules::LogicalSelectAsPhysicalFilterRule::new())
+            .add_rule(rules::LogicalSelectSimplifyRule::new())
+            .add_rule(rules::LogicalJoinInnerCommuteRule::new())
+            .add_rule(rules::LogicalJoinInnerAssocRule::new())
+            .build();
+
+                self.reset_cascades();
+
+                let ctx = IRContext::with_empty_magic();
+
+                let mut schema_by_name: HashMap<String, Arc<optd_core::ir::catalog::Schema>> =
+                    HashMap::new();
+        
+                //println!("DEBUG: creating schema map for source tables");
+
+                if let Some(source_batches) = memo_rows.get("source_table") {
+                    for batch in source_batches {
+                        for row in 0..batch.num_rows() {
+                            let table_name = optd_core::parser_records::parse_string(
+                                batch,
+                                row,
+                                "name",
+                            )
+                            .map_err(|e| DataFusionError::External(e.into()))?;
+
+                            let table_ref = TableReference::parse_str(&table_name);
+                            let schema_provider = session_state.schema_for_ref(table_ref.clone())?;
+                            let table_provider = schema_provider
+                                .table(table_ref.table())
+                                .await?
+                                .ok_or_else(|| {
+                                    DataFusionError::Plan(format!(
+                                        "table '{}' not found while resolving schema",
+                                        table_name
+                                    ))
+                                })?;
+
+                            let df_schema = DFSchema::try_from_qualified_schema(
+                                table_ref.clone(),
+                                table_provider.schema().as_ref(),
+                            )?;
+                            let optd_schema = into_optd_schema(&df_schema)
+                                .map_err(|e| DataFusionError::External(e.into()))?;
+
+                            schema_by_name.insert(table_name.clone(), optd_schema.clone());
+                            schema_by_name
+                                .entry(table_ref.table().to_string())
+                                .or_insert_with(|| optd_schema.clone());
+                            if let Some(schema_name) = table_ref.schema() {
+                                schema_by_name
+                                    .entry(format!("{}.{}", schema_name, table_ref.table()))
+                                    .or_insert(optd_schema);
+                            }
+                        }
+                    }
+                }
+
+                let schema_by_name = Arc::new(schema_by_name);
+                let schema_resolver = move |full_name: &str| {
+                    let schema_by_name = Arc::clone(&schema_by_name);
+                    let full_name = full_name.to_string();
+                    Box::pin(async move {
+                        schema_by_name.get(&full_name).cloned().ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "schema for '{}' was not preloaded from SessionState",
+                                full_name
+                            )
+                        })
+                    }) as Pin<Box<dyn Future<Output = anyhow::Result<Arc<optd_core::ir::catalog::Schema>>> + Send>>
+                };
+                //println!("DEBUG: finished creating schema map for source tables, start loading context from db");
+
+                ctx.load_from_db(memo_rows.clone(), schema_resolver)
+                    .await
+                    .map_err(|e| DataFusionError::External(e.into()))?;
+
+                //println!("DEBUG: finished loading context from db, start creating cascades");
+                opt = self.shared_cascades(ctx, rule_set1);
+                
+
+                //println!("!DEBUG : finished creating cascades, start loading memo from db");
+
+                opt.load_memo_from_db(memo_rows).await;
+                //load context from db
+                //println!("DEBUG: FINISHED LOADING MEMO FROM DB");
+                info!("memo preload applied before optimize");
+                presistent_layer = true;
+                
+            }
+        }
+
+        
         // Important: logical conversion must use the same ctx as the shared cascades/memo.
         let optd_logical = self
             .try_into_optd_logical_plan(actual_logical_plan, &opt.ctx, session_state)
             .await
             .map_err(|e| DataFusionError::External(e.into()))?;
-
-        let mut presistent_layer =false;
-        if use_persistent_memo() {
-            if let Some(memo_rows) = take_memo_preload_rows() {
-
-                info!("applying memo preload before optimize");
-                opt.load_memo_from_db(memo_rows).await;
-                info!("memo preload applied before optimize");
-                presistent_layer = true;
-            }
-        }
 
 
         //

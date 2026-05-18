@@ -41,11 +41,13 @@ struct Cli {
 pub async fn get_memo_from_db(db: &DataFusionDB) -> Result<HashMap<String, Vec<RecordBatch>>> {
     // possivelmente alterar para não usar strings e usar o record batch
     let statements = [
-        ("group", "SELECT * FROM group "),
+        ("group", "SELECT * FROM memo_group "),
         ("expression", "SELECT * FROM expression"),
         ("expression_input", "SELECT * FROM expression_input"),
         ("scalar", "SELECT * FROM scalar ORDER BY id DESC"),
         ("expression_scalar", "SELECT * FROM expression_scalar"),
+        ("source_table", "SELECT * FROM source_table"),
+        ("memo_column", "SELECT * FROM memo_column")
     ];
 
     let mut memo_rows  = HashMap::new();
@@ -152,6 +154,7 @@ async fn main() -> Result<()> {
         for path in &cli.query_files {
             let metadata = fs::metadata(path)?;
             if metadata.is_dir() {
+                println!("Expandindo diretoria '{}' para ficheiros .sql...", path);
                 let mut dir_sql_files = fs::read_dir(path)?
                     .filter_map(|entry| entry.ok().map(|e| e.path()))
                     .filter(|p| {
@@ -185,7 +188,7 @@ async fn main() -> Result<()> {
             .map(|file| Ok((file.clone(), fs::read_to_string(file)?)))
             .collect::<Result<Vec<_>>>()?
     };
-
+    //println!("queries: {}", sql_queries.iter().map(|(source, query)| format!("{}->{}", source, query)).join("\n "));
     //println!("📋 Query: {}\n", sql_query);
 
     // Criar conexão com DataFusionDB
@@ -228,8 +231,6 @@ async fn main() -> Result<()> {
     let mut result = String::new();
     let r = &mut result;
 
-    // TODO : remover, apenas para debug
-    
     if cli.memo_presist {
         println!("Preloading memo from DB...");
 
@@ -239,11 +240,12 @@ async fn main() -> Result<()> {
             println!("Tempo a ler o memo da DB: {:?}", start.elapsed());
             rows
         } else {
-            get_memo_from_db(&db).await?
+            get_memo_from_db(&db).await? // fetch data from memo tables
         };
 
         db.set_memo_preload_rows(memo_rows);
         db.set_persistent_memo(true);
+        println!("Memo preloaded and persistence enabled.");
     }
 
 

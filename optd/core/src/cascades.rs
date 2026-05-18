@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use datafusion::arrow::array::RecordBatch;
 use itertools::Itertools;
@@ -38,7 +38,25 @@ impl Cascades {
    pub async fn load_memo_from_db(&self, data: HashMap<String, Vec<RecordBatch>>) {
         let mut writer = self.memo.write().await;
         writer.load_from_db(data);
+    }
 
+    /// Load persisted IRContext state from database RecordBatches.
+    /// 
+    /// The `schema_resolver` should be provided by the planner and must use the same
+    /// schema resolution logic as `try_into_optd_logical_get`:
+    /// - For each table name, use `DFSchema::try_from_qualified_schema(qualified_name, source_schema)`
+    /// - Convert to optd schema using `into_optd_schema(&df_schema)?`
+    pub async fn load_context_from_db<F>(
+        &self,
+        data: HashMap<String, Vec<RecordBatch>>,
+        schema_resolver: F,
+    ) -> anyhow::Result<()>
+    where
+        F: FnMut(
+            &str,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<Arc<crate::ir::catalog::Schema>>> + Send>>,
+    {
+        self.ctx.load_from_db(data, schema_resolver).await
     }
 
     pub async fn get_insert_statements(&self)  {
@@ -58,10 +76,17 @@ impl Cascades {
             }
     }
 
-    pub async fn get_json(&self)  {
-            println!("Memo NDJSON Dump por tabela:");
-            let json = self.memo.read().await.dump_to_json();
 
+    pub async fn get_json(&self,by_table: bool)  {
+            println!("Memo NDJSON Dump ");
+            let json_memo = self.memo.read().await.dump_to_json();
+            let json_ctx = self.ctx.dump_to_json();
+            if !by_table {
+                println!("{}", json_memo);
+                println!("{}", json_ctx);
+                return;
+            }
+            
             let table_order = [
                 "group",
                 "expression",
@@ -70,13 +95,14 @@ impl Cascades {
                 "expression_scalar",
             ];
 
-            if let Some(root) = json.as_object() {
+            if let Some(root) = json_memo.as_object() {
                 for table in table_order {
                     let table_json = root
                         .get(table)
                         .cloned()
                         .unwrap_or_else(|| serde_json::Value::Array(vec![]));
 
+                    /*/
                     if let Some(table_json_array) = table_json.as_array() {
     
                         println!("--- {} ({} rows) ---", table, table_json_array.len());
@@ -86,11 +112,13 @@ impl Cascades {
                     } else {
                         println!("--- {} ---", table);
                         println!("{}", table_json);
-                    }
+                    }*/
+                    println!("--- {} ---", table);
+                    println!("{}", table_json);
 
                 }
             } else {
-                println!("{}", json);
+                println!("{}", json_memo);
             }
     }
 
@@ -106,7 +134,8 @@ impl Cascades {
         let group_id =  self.insert_new_operator(plan).await;
 
         //visualizar a criação dos grupos por explorar(NotStarted)
-        println!("memo: {:#?}", self.memo.read().await);
+        //println!("memo: {:#?}", self.memo.read().await);
+        //if !persistent_layer {self.get_json(false).await;}
         
 
 
@@ -151,11 +180,13 @@ impl Cascades {
     
         // create  insert statements to persist the memo if needed
         //if !persistent_layer {self.get_insert_statements().await;}
-        //if !persistent_layer {self.get_json().await;}
 
+        //if !persistent_layer {self.get_json(false).await;}
+
+        info!("optimized plan: {:#?}", best_plan);
         // DEBUG: print MEMO  
-        // info!("optimized plan: {:#?}", best_plan);
         //println!("Final memo: {:#?}", self.memo.read().await);
+        //println!("ctx: {:#?}", self.ctx);
         Some(best_plan)
     }
 

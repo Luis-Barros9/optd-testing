@@ -118,47 +118,7 @@ impl FunctionMetadata {
 }
 
 fn parse_data_type_debug(value: &str) -> Option<DataType> {
-    let value = value.trim();
-    match value {
-        "Null" => Some(DataType::Null),
-        "Boolean" => Some(DataType::Boolean),
-        "Int8" => Some(DataType::Int8),
-        "Int16" => Some(DataType::Int16),
-        "Int32" => Some(DataType::Int32),
-        "Int64" => Some(DataType::Int64),
-        "UInt8" => Some(DataType::UInt8),
-        "UInt16" => Some(DataType::UInt16),
-        "UInt32" => Some(DataType::UInt32),
-        "UInt64" => Some(DataType::UInt64),
-        "Utf8" => Some(DataType::Utf8),
-        "Utf8View" => Some(DataType::Utf8View),
-        "Date32" => Some(DataType::Date32),
-        "Date64" => Some(DataType::Date64),
-        _ if value.starts_with("Decimal32(") && value.ends_with(')') => {
-            let (precision, scale) = parse_decimal_params(value, "Decimal32")?;
-            Some(DataType::Decimal32(precision, scale))
-        }
-        _ if value.starts_with("Decimal64(") && value.ends_with(')') => {
-            let (precision, scale) = parse_decimal_params(value, "Decimal64")?;
-            Some(DataType::Decimal64(precision, scale))
-        }
-        _ if value.starts_with("Decimal128(") && value.ends_with(')') => {
-            let (precision, scale) = parse_decimal_params(value, "Decimal128")?;
-            Some(DataType::Decimal128(precision, scale))
-        }
-        _ => None,
-    }
-}
-
-fn parse_decimal_params(value: &str, prefix: &str) -> Option<(u8, i8)> {
-    let inner = value
-        .strip_prefix(prefix)?
-        .strip_prefix('(')?
-        .strip_suffix(')')?;
-    let (precision, scale) = inner.split_once(',')?;
-    let precision = precision.trim().parse::<u8>().ok()?;
-    let scale = scale.trim().parse::<i8>().ok()?;
-    Some((precision, scale))
+    crate::parser_records::parse_data_type(value)
 }
 
 impl Explain for FunctionBorrowed<'_> {

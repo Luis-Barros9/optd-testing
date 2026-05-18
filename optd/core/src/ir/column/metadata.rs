@@ -7,6 +7,8 @@ use std::{collections::HashMap, sync::Arc};
 /// Note that the column data type only stores the column identifier, all other
 /// metadata (data type, name) is stored in the ColumnMeta type and accessible
 /// from a column meta store given a column
+
+#[derive(Debug)]
 pub struct ColumnMeta {
     pub data_type: DataType,
     pub name: String,
@@ -19,7 +21,7 @@ pub struct ColumnMeta {
 /// The columns field is indexed by the column's globally unique ID, i.e. the
 /// metadata for Column(id) is in columns[id]. Accessor methods (get) are
 /// provided for this conversion
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ColumnMetaStore {
     columns: Vec<Arc<ColumnMeta>>,
     name_to_column_id: HashMap<String, Column>,
@@ -42,16 +44,41 @@ impl ColumnMetaStore {
         res.clone()
     }
 
+    pub fn name_to_column_id_entries(&self) -> Vec<(String, Column)> {
+        self.name_to_column_id
+            .iter()
+            .map(|(name, column)| (name.clone(), *column))
+            .collect()
+    }
+
     pub fn column_by_name(&self, name: &str) -> Option<Column> {
-        self.name_to_column_id.get(name).cloned()
+        if let Some(column) = self.name_to_column_id.get(name).cloned() {
+            return Some(column);
+        }
+
+        let suffix = format!(".{name}");
+        let mut match_column = None;
+        for (stored_name, column) in &self.name_to_column_id {
+            if stored_name.ends_with(&suffix) {
+                if match_column.is_some() {
+                    return None;
+                }
+                match_column = Some(*column);
+            }
+        }
+
+        match_column
     }
 
     /// The name of this column must be globally unique
     pub fn new_column(&mut self, data_type: DataType, name: Option<String>) -> Column {
         let column = Column(self.columns.len());
         let name = name.unwrap_or_else(|| column.to_string());
-        let old = self.name_to_column_id.insert(name.clone(), column);
-        assert!(old.is_none());
+        if let Some(existing) = self.name_to_column_id.get(&name).cloned() {
+            return existing;
+        }
+
+        self.name_to_column_id.insert(name.clone(), column);
         self.columns.push(Arc::new(ColumnMeta { data_type, name }));
         column
     }
@@ -74,5 +101,9 @@ impl ColumnMetaStore {
             }
         }
         self.name_to_column_id.insert(alias, column);
+    }
+
+    pub fn insert_name_to_column_id(&mut self, name: String, column: Column) {
+        self.name_to_column_id.insert(name, column);
     }
 }
